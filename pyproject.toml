@@ -1,0 +1,37 @@
+[project]
+name = "smpl-env-experiments"
+version = "0.1.0"
+description = "Experiments on SMPL environment"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "casadi==3.6",
+    "d3rlpy==1.1.1",
+    "hashfile>=2.1.5",
+    "mzutils>=0.2022",
+    "numpy==1.23.5",
+    "protobuf==3.20",
+    "pydantic<2",
+    "ray[rllib,tune]==2.0.0",
+    "tensorboard>=2.11.2",
+    "torch==1.13",
+    "torchvision==0.14.0",
+    "wandb>=0.18.5",
+    "wheel==0.38.4",
+    "fastodeint",
+    "pensimpy",
+    "mpctools",
+    "smpl",
+]
+
+[tool.uv]
+# index-url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
+dev-dependencies = [
+    "ruff>=0.7.0",
+]
+
+[tool.uv.sources]
+smpl = { path = "./extern-lib/smpl/" }
+fastodeint = { path = "./extern-lib/fastodeint/" }
+pensimpy = { path = "./extern-lib/PenSimPy/" }
+mpctools = { path = "./extern-lib/mpctools_casadi/" }

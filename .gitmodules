@@ -1,0 +1,12 @@
+[submodule "extern-lib/fastodeint"]
+	path = extern-lib/fastodeint
+	url = git@github.com:EcustAutoControl2023/fastodeint.git
+[submodule "extern-lib/PenSimPy"]
+	path = extern-lib/PenSimPy
+	url = git@github.com:EcustAutoControl2023/PenSimPy.git
+[submodule "extern-lib/mpctools_casadi"]
+	path = extern-lib/mpctools_casadi
+	url = git@github.com:EcustAutoControl2023/mpctools_casadi.git
+[submodule "extern-lib/smpl"]
+	path = extern-lib/smpl
+	url = git@github.com:EcustAutoControl2023/smpl.git
