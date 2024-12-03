@@ -10,12 +10,16 @@ git clone --recursive git@github.com:EcustAutoControl2023/smpl-env-experiments.g
 Then install [uv](https://docs.astral.sh/uv/getting-started/installation/)
 
 ```shell
-uv sync
+cd smpl-env-experiments && uv sync
 ```
 
 ### Usage
+Activate venv
+```shell
+source .venv/bin/activate
+```
 
 Demo test
-```
-uv run ./test/PenSimEnvTest.py
+```shell
+cd test && uv run ./PenSimEnvTest.py
 ```
