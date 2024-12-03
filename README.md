@@ -3,14 +3,14 @@
 ### Installation
 
 ```shell
-git clone --recursive git@github.com:EcustAutoControl2023/smpl-env-experiments.git
+git clone --recursive git@github.com:EcustAutoControl2023/smpl-env-experiments.git && cd smpl-env-experiments &&  git submodule update --recursive --remote
 
 ```
 
 Then install [uv](https://docs.astral.sh/uv/getting-started/installation/)
 
 ```shell
-cd smpl-env-experiments && uv sync
+uv sync
 ```
 
 ### Usage
