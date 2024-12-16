@@ -1,0 +1,19 @@
+[project]
+name = "d3rlpy-patch"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "CJY-C", email = "masarity@outlook.com" }
+]
+requires-python = ">=3.9"
+dependencies = []
+
+[build-system]
+requires = ["hatchling", "wheel", "Cython", "numpy", "setuptools>=42"]
+# build-backend = "hatchling.build"
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+d3rlpy-patch = "d3rlpy_patch:hello"
+

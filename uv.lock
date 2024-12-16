@@ -11,6 +11,12 @@ resolution-markers = [
     "python_full_version >= '3.12' and sys_platform != 'linux'",
 ]
 
+[manifest]
+members = [
+    "d3rlpy-patch",
+    "smpl-env-experiments",
+]
+
 [[package]]
 name = "absl-py"
 version = "2.1.0"
@@ -440,6 +446,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f4/c3/acb384e533ede66c40658f9284f356d2b3f2fadadff4e71987dbcab7e1b7/d3rlpy-1.1.1-cp39-cp39-manylinux1_x86_64.whl", hash = "sha256:77c4b6b964d90908fb5e3e9bc44d498c6fbc5ec3aed48bd0625056e98045ce1b", size = 1257986 },
     { url = "https://files.pythonhosted.org/packages/56/61/4f6e7963ed122f82cb7b36a603495c8adfcebc39aafecf2db8059b7a5e2c/d3rlpy-1.1.1-cp39-cp39-win_amd64.whl", hash = "sha256:49d79f92bfc24ae79b00caf6f8c540e70db940aa2d7ac661c1aa91230df09f08", size = 341813 },
 ]
+
+[[package]]
+name = "d3rlpy-patch"
+version = "0.1.0"
+source = { editable = "patches/d3rlpy-patch" }
 
 [[package]]
 name = "defusedxml"
@@ -2764,6 +2775,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "casadi" },
     { name = "d3rlpy" },
+    { name = "d3rlpy-patch" },
     { name = "fastodeint" },
     { name = "hashfile" },
     { name = "mpctools" },
@@ -2790,6 +2802,7 @@ dev = [
 requires-dist = [
     { name = "casadi", specifier = "==3.6" },
     { name = "d3rlpy", specifier = "==1.1.1" },
+    { name = "d3rlpy-patch", editable = "patches/d3rlpy-patch" },
     { name = "fastodeint", directory = "extern-lib/fastodeint" },
     { name = "hashfile", specifier = ">=2.1.5" },
     { name = "mpctools", directory = "extern-lib/mpctools_casadi" },

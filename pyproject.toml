@@ -22,6 +22,7 @@ dependencies = [
     "pensimpy",
     "mpctools",
     "smpl",
+    "d3rlpy-patch",
 ]
 
 [tool.uv]
@@ -35,3 +36,7 @@ smpl = { path = "./extern-lib/smpl/" }
 fastodeint = { path = "./extern-lib/fastodeint/" }
 pensimpy = { path = "./extern-lib/PenSimPy/" }
 mpctools = { path = "./extern-lib/mpctools_casadi/" }
+d3rlpy-patch = { workspace = true }
+
+[tool.uv.workspace]
+members = ["patches/d3rlpy-patch"]
