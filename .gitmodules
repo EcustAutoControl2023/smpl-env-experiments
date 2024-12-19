@@ -10,3 +10,7 @@
 [submodule "extern-lib/smpl"]
 	path = extern-lib/smpl
 	url = git@github.com:EcustAutoControl2023/smpl.git
+[submodule "experiments/smpl-experiments"]
+	path = experiments/smpl-experiments
+	url = git@github.com:EcustAutoControl2023/smpl-experiments.git
+	branch = dev

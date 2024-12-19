@@ -1,6 +1,8 @@
 import math
 from typing import Optional, Sequence, cast
 
+from numpy.lib import mixins
+
 from d3rlpy_patch.models.torch.imitators import TemporalConditionalVAE
 import numpy as np
 import torch
@@ -174,7 +176,10 @@ class TBCQImpl(DDPGBaseImpl):
             observation_recon, action_recon
         )
         # FIXME: shape mismatch
-        action = self._policy(batch.observations, torch.cat([sampled_action]*20, dim=0))
+        action_recon = action_recon.permute(1, 0, 2)
+        mixed_action = torch.cat([action_recon[:, 1:, :], sampled_action.unsqueeze(1)], dim = 1)
+        action = self._policy(batch.observations, mixed_action.reshape(-1, self._action_size))
+        # action = self._policy(batch.observations, torch.cat([sampled_action]*20, dim=0))
         return -self._q_func(batch.observations, action, "none")[0].mean()
 
     @train_api
@@ -222,7 +227,8 @@ class TBCQImpl(DDPGBaseImpl):
         )
         clipped_latent = latent.clamp(-0.5, 0.5)
         # sample action
-        sampled_action = self._imitator.decode(flattened_x, clipped_latent)
+        # sampled_action = self._imitator.decode(flattened_x, clipped_latent)
+        sampled_action = self._imitator.decode_new(flattened_x)
         # add residual action
         policy = self._targ_policy if target else self._policy
         action = policy(flattened_x, sampled_action)

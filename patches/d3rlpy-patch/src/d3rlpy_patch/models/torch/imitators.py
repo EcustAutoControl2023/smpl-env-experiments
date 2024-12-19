@@ -269,6 +269,9 @@ class TemporalConditionalVAE(nn.Module):  # type: ignore
         return torch.tanh(self._fc(h))
         # return self.predict(x, latent)
 
+    def decode_new(self, x: torch.Tensor) -> torch.Tensor:
+        return self.sample(x)
+
     def decode_without_squash(
         self, x: torch.Tensor, latent: torch.Tensor
     ) -> torch.Tensor:
@@ -286,9 +289,17 @@ class TemporalConditionalVAE(nn.Module):  # type: ignore
         return vrnn_loss + vanilla_vae_loss
 
     def sample(self, x: torch.Tensor) -> torch.Tensor:
-        latent = torch.randn((x.shape[0], self._latent_size), device=x.device)
-        # to prevent extreme numbers
-        return self.decode(x, latent.clamp(-0.5, 0.5))
+        # latent = torch.randn((x.shape[0], self._latent_size), device=x.device)
+        # # to prevent extreme numbers
+        # return self.decode(x, latent.clamp(-0.5, 0.5))
+        h = torch.randn((x.shape[0], self._k), device=x.device)
+        e_t = torch.randn((x.shape[0], self._latent_size), device=x.device)
+        x_seq_embed = self._process_x(x)
+        z_t_mean, z_t_logstd = self._posterior_gaussian(torch.cat([x_seq_embed, h], dim=-1))
+        z_t = normal_differential_sample(MultivariateNormal(z_t_mean, logsigma2cov(z_t_logstd)))
+        z_t_embed = self._process_z(z_t)
+
+        return self.decode_action(h, e_t, x_seq_embed, z_t_embed)
 
     def sample_n(
         self, x: torch.Tensor, n: int, with_squash: bool = True
