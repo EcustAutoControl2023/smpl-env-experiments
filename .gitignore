@@ -165,3 +165,5 @@ cython_debug/
 d3rlpy_logs/
 offline_datasets/
 offline_temporal_datasets/
+
+d3rlpy_patch/dataset.cpp
