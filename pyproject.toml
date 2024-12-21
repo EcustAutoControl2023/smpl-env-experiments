@@ -10,7 +10,7 @@ dependencies = [
     "hashfile>=2.1.5",
     "mzutils>=0.2022",
     "numpy==1.23.5",
-    "protobuf==3.20",
+    "protobuf==3.20.2",
     "pydantic<2",
     "ray[rllib,tune]==2.0.0",
     "tensorboard>=2.11.2",
