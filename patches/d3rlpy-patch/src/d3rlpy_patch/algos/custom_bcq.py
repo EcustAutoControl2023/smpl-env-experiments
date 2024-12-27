@@ -1,5 +1,6 @@
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
+from d3rlpy.logger import D3RLPyLogger
 from d3rlpy_patch.models.torch.imitators import TemporalConditionalVAE
 import numpy as np
 
@@ -15,7 +16,7 @@ from d3rlpy.argument_utility import (
     check_use_gpu,
 )
 from d3rlpy.constants import IMPL_NOT_INITIALIZED_ERROR, ActionSpace
-from d3rlpy.dataset import TransitionMiniBatch
+from d3rlpy.dataset import Episode, TransitionMiniBatch
 from d3rlpy.gpu import Device
 from d3rlpy.models.encoders import EncoderFactory
 from d3rlpy.models.optimizers import AdamFactory, OptimizerFactory
@@ -75,7 +76,7 @@ class TBCQ(AlgoBase):
         n_critics: int = 2,
         update_actor_interval: int = 1,
         lam: float = 0.75,
-        n_action_samples: int = 100,
+        n_action_samples: int = 20,
         action_flexibility: float = 0.05,
         rl_start_step: int = 0,
         beta: float = 0.5,
@@ -192,6 +193,10 @@ class TBCQ(AlgoBase):
 
     def get_action_type(self) -> ActionSpace:
         return ActionSpace.CONTINUOUS
+
+    def _evaluate(self, episodes: List[Episode], scorers: Dict[str, Callable[[Any, List[Episode]], float]], logger: D3RLPyLogger) -> None:
+        __import__('pprint').pprint(scorers)
+        return super()._evaluate(episodes, scorers, logger)
 
 class CustomBCQ(AlgoBase):
     r"""Batch-Constrained Q-learning algorithm.

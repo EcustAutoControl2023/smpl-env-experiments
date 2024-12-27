@@ -134,7 +134,7 @@ class TemporalConditionalVAE(nn.Module):  # type: ignore
         h_list = [h]
         rnn_hidden_state_list = [rnn_hidden_state.transpose(1, 0)]
 
-        for t in range(self._tl):
+        for t in range(l):
             z_t_mean, z_t_logstd = self._posterior_gaussian(torch.cat([x_seq_embed[t], h], dim=-1))
             z_t = normal_differential_sample(MultivariateNormal(z_t_mean, logsigma2cov(z_t_logstd)))
 
@@ -241,8 +241,7 @@ class TemporalConditionalVAE(nn.Module):  # type: ignore
 
     def predict(self, x: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         external_input_seq = action
-        # FIXME: 不知道原论文这里是什么意思？？
-        observation_seq = x # x[:-1]
+        observation_seq = x[:-1]
 
         outputs, _ = self.forward_posterior(observation_seq, external_input_seq)
 
@@ -293,7 +292,7 @@ class TemporalConditionalVAE(nn.Module):  # type: ignore
         # # to prevent extreme numbers
         # return self.decode(x, latent.clamp(-0.5, 0.5))
         h = torch.randn((x.shape[0], self._k), device=x.device)
-        e_t = torch.randn((x.shape[0], self._latent_size), device=x.device)
+        e_t = torch.randn((x.shape[0], self._latent_size), device=x.device).clamp(-0.5, 0.5)
         x_seq_embed = self._process_x(x)
         z_t_mean, z_t_logstd = self._posterior_gaussian(torch.cat([x_seq_embed, h], dim=-1))
         z_t = normal_differential_sample(MultivariateNormal(z_t_mean, logsigma2cov(z_t_logstd)))
