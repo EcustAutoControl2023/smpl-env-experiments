@@ -1,3 +1,4 @@
+import numpy as np
 import copy
 import math
 from typing import Any, List, Optional, Sequence, cast
@@ -31,6 +32,53 @@ from d3rlpy.torch_utility import TorchMiniBatch, torch_api, train_api
 from d3rlpy.algos.torch.ddpg_impl import DDPGBaseImpl
 from d3rlpy.algos.torch.dqn_impl import DoubleDQNImpl
 
+from torch import nn
+import torch.nn.functional as F
+
+
+class Actor(nn.Module):
+    def __init__(self, state_dim, action_dim, max_action, phi=0.05):
+        super(Actor, self).__init__()
+        self.l1 = nn.Linear(state_dim[0] + action_dim, 400)
+        self.l2 = nn.Linear(400, 300)
+        self.l3 = nn.Linear(300, action_dim)
+
+        self.max_action = max_action
+        self.phi = phi
+
+    def forward(self, state, action):
+        a = F.relu(self.l1(torch.cat([state, action], -1)))
+        a = F.relu(self.l2(a))
+        a = self.phi * self.max_action * torch.tanh(self.l3(a))
+        return (a + action).clamp(-self.max_action, self.max_action)
+
+
+class Critic(nn.Module):
+    def __init__(self, state_dim, action_dim):
+        super(Critic, self).__init__()
+        self.l1 = nn.Linear(state_dim[0] + action_dim, 400)
+        self.l2 = nn.Linear(400, 300)
+        self.l3 = nn.Linear(300, 1)
+
+        self.l4 = nn.Linear(state_dim[0] + action_dim, 400)
+        self.l5 = nn.Linear(400, 300)
+        self.l6 = nn.Linear(300, 1)
+
+    def forward(self, state, action):
+        q1 = F.relu(self.l1(torch.cat([state, action], -1)))
+        q1 = F.relu(self.l2(q1))
+        q1 = self.l3(q1)
+
+        q2 = F.relu(self.l4(torch.cat([state, action], -1)))
+        q2 = F.relu(self.l5(q2))
+        q2 = self.l6(q2)
+        return q1, q2
+
+    def q1(self, state, action):
+        q1 = F.relu(self.l1(torch.cat([state, action], -1)))
+        q1 = F.relu(self.l2(q1))
+        q1 = self.l3(q1)
+        return q1
 
 class TBCQImpl(DDPGBaseImpl):
 
@@ -123,19 +171,31 @@ class TBCQImpl(DDPGBaseImpl):
         self._history_states = None
         self._history_actions = None
 
+        self._max_action = 1
+        self._phi = 0.05
+        self._discount = 0.99
+        self._lmbda = 0.75
+        self._batch_size = 128
+
+
     def build(self) -> None:
         self._build_imitator()
-        super().build()
         # setup optimizer after the parameters move to GPU
         self._build_imitator_optim()
 
+        self._build_actor()
+        self._build_critic()
+
     def _build_actor(self) -> None:
-        self._policy = create_deterministic_residual_policy(
-            self._observation_shape,
-            self._action_size,
-            self._action_flexibility,
-            self._actor_encoder_factory,
-        )
+        self.actor = Actor(self._observation_shape, self._action_size, self._max_action, self._phi).to(self.device)
+        self.actor_target = copy.deepcopy(self.actor)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self._actor_learning_rate)
+
+    def _build_critic(self) -> None:
+        # critic network
+        self.critic = Critic(self._observation_shape, self._action_size).to(self.device)
+        self.critic_target = copy.deepcopy(self.critic)
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self._critic_learning_rate)
 
     def _build_imitator(self) -> None:
         self._imitator = create_temporal_conditional_vae(
@@ -160,17 +220,6 @@ class TBCQImpl(DDPGBaseImpl):
 
     def compute_actor_loss(self, batch: TorchMiniBatch) -> torch.Tensor:
         assert self._imitator is not None
-        assert self._policy is not None
-        assert self._q_func is not None
-        # latent = torch.randn(
-        #     batch.observations.shape[0],
-        #     2 * self._action_size,
-        #     device=self._device,
-        # )
-        # clipped_latent = latent.clamp(-0.5, 0.5)
-        # XXX: debug
-        # print(f'TBCQImpl.compute_actor_loss: batch.observations.shape={batch.observations.shape}')
-        # print(f'TBCQImpl.compute_actor_loss: batch.actions.shape={batch.actions.shape}')
 
         # reconstruct observation and action
         observation_recon = batch.observations.reshape(-1, self._tl, self.observation_shape[0])
@@ -182,12 +231,57 @@ class TBCQImpl(DDPGBaseImpl):
         sampled_action = self._imitator.predict(
             observation_recon, action_recon[:-1]
         )
-        # FIXME: shape mismatch
-        # action_recon = action_recon.permute(1, 0, 2)
-        # mixed_action = torch.cat([action_recon[:, 1:, :], sampled_action.unsqueeze(1)], dim = 1)
-        # action = self._policy(batch.observations, mixed_action.reshape(-1, self._action_size))
-        action = self._policy(observation_recon[-1], sampled_action)
-        return -self._q_func(observation_recon[-1], action, "none")[0].mean()
+        # Update through DPG
+        actor_loss = -self.critic.q1(observation_recon[-1], sampled_action).mean()
+
+        return actor_loss
+
+    def update_critic_target(self) -> None:
+        for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
+            target_param.data.copy_(self._tau * param.data + (1 - self._tau) * target_param.data)
+
+    def update_actor_target(self) -> None:
+        for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
+            target_param.data.copy_(self._tau * param.data + (1 - self._tau) * target_param.data)
+
+    @train_api
+    @torch_api()
+    def update_actor(self, batch: TorchMiniBatch) -> np.ndarray:
+        # Q function should be inference mode for stability
+
+        self.actor_optimizer.zero_grad()
+
+        loss = self.compute_actor_loss(batch)
+
+        loss.backward()
+        self.actor_optimizer.step()
+
+        return loss.cpu().detach().numpy()
+
+    def compute_critic_loss(
+        self, batch: TorchMiniBatch, q_tpn: torch.Tensor
+    ) -> torch.Tensor:
+        observation_recon = batch.observations.reshape(-1, self._tl, self.observation_shape[0])
+        observation_recon = observation_recon.permute(1, 0, 2)
+        action_recon = batch.actions.reshape(-1, self._tl, self._action_size)
+        action_recon = action_recon.permute(1, 0, 2)
+        current_Q1, current_Q2 = self.critic(observation_recon[-1], action_recon[-1])
+        critic_loss = F.mse_loss(current_Q1, q_tpn) + F.mse_loss(current_Q2, q_tpn)
+        return critic_loss
+
+    @train_api
+    @torch_api()
+    def update_critic(self, batch: TorchMiniBatch) -> np.ndarray:
+        self.critic_optimizer.zero_grad()
+
+        q_tpn = self.compute_target(batch)
+
+        loss = self.compute_critic_loss(batch, q_tpn)
+
+        loss.backward()
+        self.critic_optimizer.step()
+
+        return loss.cpu().detach().numpy()
 
     @train_api
     @torch_api()
@@ -268,21 +362,27 @@ class TBCQImpl(DDPGBaseImpl):
         action_tensor = torch.Tensor(self._history_actions).unsqueeze(1).to(self._device)
 
         assert self._imitator is not None
-        assert self._policy is not None
-        assert self._q_func is not None
+        # assert self._policy is not None
+        # assert self._q_func is not None
 
         predicted_action = self._imitator.predict(state_tensor, action_tensor[1:])
 
         state = x.repeat_interleave(self._n_action_samples, dim=0)
-        action = predicted_action.repeat_interleave(self._n_action_samples, dim=0)
-        action = self._policy(state, action)
-        values = self._q_func(state.reshape(-1, *self.observation_shape), action.view(-1, self.action_size), "none")[0]
-        index = values.view(-1, self._n_action_samples).argmax(dim=1)
+        action = self.actor(
+            state,
+            predicted_action.repeat_interleave(self._n_action_samples, dim=0)
+        )  # repeat batch_size times
+
+        q1 = self.critic.q1(state, action)
+        ind = q1.argmax(0)
+
+        # action = action[ind].detach().cpu().numpy().flatten()
+
 
         self._history_states.pop(0)
         self._history_states.append(list(copy.deepcopy(x).detach().cpu().numpy())[0])
         self._history_actions.pop(0)
-        self._history_actions.append(list(action[index].detach().cpu().numpy())[0])
+        self._history_actions.append(list(action[ind].detach().cpu().numpy())[0])
 
         # repeated_x = self._repeat_observation(x)
         # action = self._sample_repeated_action(repeated_x)
@@ -290,38 +390,35 @@ class TBCQImpl(DDPGBaseImpl):
         # # pick the best (batch_size * n) -> (batch_size,)
         # index = values.view(-1, self._n_action_samples).argmax(dim=1)
         # return action[torch.arange(action.shape[0]), index]
-        return action[index]
+        return action[ind]
 
     def _sample_action(self, x: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError("BCQ does not support sampling action")
 
     def compute_target(self, batch: TorchMiniBatch) -> torch.Tensor:
-        assert self._targ_q_func is not None
-        # TODO: this seems to be slow with image observation
+        assert self._imitator is not None
+        # Critic Training
         with torch.no_grad():
-            # reconstruct observation and action
             observation_recon = batch.next_observations.reshape(-1, self._tl, self.observation_shape[0])
             observation_recon = observation_recon.permute(1, 0, 2)
-            observation_recon = observation_recon.repeat_interleave(self._n_action_samples, dim=1)
-            observation_recon = observation_recon.permute(1, 0, 2)
-            actions = self._sample_repeated_action(observation_recon, True)
+            action_recon = batch.actions.reshape(-1, self._tl, self._action_size)
+            action_recon = action_recon.permute(1, 0, 2)
+            # Duplicate next state 10 times
+            next_state = torch.repeat_interleave(observation_recon, 10, dim=1)
+            history_action = torch.repeat_interleave(action_recon, 10, dim=1)
 
-
-            # observation_recon = observation_recon.permute(1, 0, 2)
-            # action_recon = action_recon.permute(1, 0, 2)
-
-            # repeated_x = self._repeat_observation(batch.next_observations)
-            # actions = self._sample_repeated_action(repeated_x, True)
-
-            # values = compute_max_with_n_actions(
-            #     batch.next_observations[-1], actions[1:], self._targ_q_func, self._lam
-            # )
-
-            values = compute_max_with_n_actions(
-                batch.next_observations, actions, self._targ_q_func, self._lam
+            target_Q1, target_Q2 = self.critic_target(
+                next_state[-1], self.actor_target(next_state[-1], self._imitator.predict(next_state, history_action[1:]))
             )
 
-            return values
+            # Soft Clipped Double Q-learning
+            target_Q = self._lmbda * torch.min(target_Q1, target_Q2) + (1. - self._lmbda) * torch.max(target_Q1, target_Q2)
+
+            # Take max over each action sampled from the VAE
+            target_Q = target_Q.reshape(self._batch_size, -1).max(-1)[0].reshape(-1, 1)
+            target_Q = batch.rewards[-1] + (1 - batch.terminals[-1]) * self._discount * target_Q
+
+            return target_Q
 
 class CustomBCQImpl(DDPGBaseImpl):
 
