@@ -1,6 +1,9 @@
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from collections import defaultdict
+from typing import Any, Callable, Dict, Generator, List, Optional, Sequence, Union, Tuple, cast
 
-from d3rlpy.logger import D3RLPyLogger
+from d3rlpy.iterators import RandomIterator, TransitionIterator
+from d3rlpy.logger import LOG, D3RLPyLogger
+from d3rlpy_patch.iterators.round_iterator import RoundIterator
 from d3rlpy_patch.models.torch.imitators import TemporalConditionalVAE
 import numpy as np
 
@@ -15,14 +18,15 @@ from d3rlpy.argument_utility import (
     check_q_func,
     check_use_gpu,
 )
-from d3rlpy.constants import IMPL_NOT_INITIALIZED_ERROR, ActionSpace
-from d3rlpy.dataset import Episode, TransitionMiniBatch
+from d3rlpy.constants import CONTINUOUS_ACTION_SPACE_MISMATCH_ERROR, DISCRETE_ACTION_SPACE_MISMATCH_ERROR, IMPL_NOT_INITIALIZED_ERROR, ActionSpace
+from d3rlpy.dataset import Episode, MDPDataset, Transition, TransitionMiniBatch
 from d3rlpy.gpu import Device
 from d3rlpy.models.encoders import EncoderFactory
 from d3rlpy.models.optimizers import AdamFactory, OptimizerFactory
 from d3rlpy.models.q_functions import QFunctionFactory
 from d3rlpy.algos.base import AlgoBase
-from .torch.custom_bcq_impl import CustomBCQImpl, Custom_DiscreteBCQImpl, TBCQImpl
+from tqdm import tqdm
+from .torch.custom_bcq_impl import TBCQMImpl,  TBCQImpl
 
 
 class TBCQ(AlgoBase):
@@ -84,7 +88,7 @@ class TBCQ(AlgoBase):
         scaler: ScalerArg = None,
         action_scaler: ActionScalerArg = None,
         reward_scaler: RewardScalerArg = None,
-        impl: Optional[CustomBCQImpl] = None,
+        impl: Optional[TBCQImpl] = None,
         k: int = 128,
         tl: int = 20,
         net_type: str = "GRU",
@@ -195,130 +199,267 @@ class TBCQ(AlgoBase):
         return ActionSpace.CONTINUOUS
 
     def _evaluate(self, episodes: List[Episode], scorers: Dict[str, Callable[[Any, List[Episode]], float]], logger: D3RLPyLogger) -> None:
-        __import__('pprint').pprint(scorers)
+        # __import__('pprint').pprint(scorers)
         return super()._evaluate(episodes, scorers, logger)
 
-class CustomBCQ(AlgoBase):
-    r"""Batch-Constrained Q-learning algorithm.
+    def fitter(
+        self,
+        dataset: Union[List[Episode], List[Transition], MDPDataset],
+        n_epochs: Optional[int] = None,
+        n_steps: Optional[int] = None,
+        n_steps_per_epoch: int = 10000,
+        save_metrics: bool = True,
+        experiment_name: Optional[str] = None,
+        with_timestamp: bool = True,
+        logdir: str = "d3rlpy_logs",
+        verbose: bool = True,
+        show_progress: bool = True,
+        tensorboard_dir: Optional[str] = None,
+        eval_episodes: Optional[List[Episode]] = None,
+        save_interval: int = 1,
+        scorers: Optional[
+            Dict[str, Callable[[Any, List[Episode]], float]]
+        ] = None,
+        shuffle: bool = True,
+        callback: Optional[Callable[["LearnableBase", int, int], None]] = None,
+    ) -> Generator[Tuple[int, Dict[str, float]], None, None]:
+        """Iterate over epochs steps to train with the given dataset. At each
+             iteration algo methods and properties can be changed or queried.
 
-    BCQ is the very first practical data-driven deep reinforcement learning
-    lgorithm.
-    The major difference from DDPG is that the policy function is represented
-    as combination of conditional VAE and perturbation function in order to
-    remedy extrapolation error emerging from target value estimation.
+        .. code-block:: python
 
-    The encoder and the decoder of the conditional VAE is represented as
-    :math:`E_\omega` and :math:`D_\omega` respectively.
+            for epoch, metrics in algo.fitter(episodes):
+                my_plot(metrics)
+                algo.save_model(my_path)
 
-    .. math::
+        Args:
+            dataset: offline dataset to train.
+            n_epochs: the number of epochs to train.
+            n_steps: the number of steps to train.
+            n_steps_per_epoch: the number of steps per epoch. This value will
+                be ignored when ``n_steps`` is ``None``.
+            save_metrics: flag to record metrics in files. If False,
+                the log directory is not created and the model parameters are
+                not saved during training.
+            experiment_name: experiment name for logging. If not passed,
+                the directory name will be `{class name}_{timestamp}`.
+            with_timestamp: flag to add timestamp string to the last of
+                directory name.
+            logdir: root directory name to save logs.
+            verbose: flag to show logged information on stdout.
+            show_progress: flag to show progress bar for iterations.
+            tensorboard_dir: directory to save logged information in
+                tensorboard (additional to the csv data).  if ``None``, the
+                directory will not be created.
+            eval_episodes: list of episodes to test.
+            save_interval: interval to save parameters.
+            scorers: list of scorer functions used with `eval_episodes`.
+            shuffle: flag to shuffle transitions on each epoch.
+            callback: callable function that takes ``(algo, epoch, total_step)``
+                , which is called every step.
 
-        L(\omega) = E_{s_t, a_t \sim D} [(a - \tilde{a})^2
-            + D_{KL}(N(\mu, \sigma)|N(0, 1))]
+        Returns:
+            iterator yielding current epoch and metrics dict.
 
-    where :math:`\mu, \sigma = E_\omega(s_t, a_t)`,
-    :math:`\tilde{a} = D_\omega(s_t, z)` and :math:`z \sim N(\mu, \sigma)`.
+        """
 
-    The policy function is represented as a residual function
-    with the VAE and the perturbation function represented as
-    :math:`\xi_\phi (s, a)`.
+        transitions = []
+        if isinstance(dataset, MDPDataset):
+            for episode in dataset.episodes:
+                transitions += episode.transitions
+        elif not dataset:
+            raise ValueError("empty dataset is not supported.")
+        elif isinstance(dataset[0], Episode):
+            for episode in cast(List[Episode], dataset):
+                transitions += episode.transitions
+        elif isinstance(dataset[0], Transition):
+            transitions = list(cast(List[Transition], dataset))
+        else:
+            raise ValueError(f"invalid dataset type: {type(dataset)}")
 
-    .. math::
+        # check action space
+        if self.get_action_type() == ActionSpace.BOTH:
+            pass
+        elif transitions[0].is_discrete:
+            assert (
+                self.get_action_type() == ActionSpace.DISCRETE
+            ), DISCRETE_ACTION_SPACE_MISMATCH_ERROR
+        else:
+            assert (
+                self.get_action_type() == ActionSpace.CONTINUOUS
+            ), CONTINUOUS_ACTION_SPACE_MISMATCH_ERROR
 
-        \pi(s, a) = a + \Phi \xi_\phi (s, a)
+        iterator: TransitionIterator
+        print(f'N_EPOCHS: {n_epochs}, N_STEPS: {n_steps}')
+        if n_epochs is None and n_steps is not None:
+            assert n_steps >= n_steps_per_epoch
+            n_epochs = n_steps // n_steps_per_epoch
+            iterator = RandomIterator(
+                transitions,
+                n_steps_per_epoch,
+                batch_size=self._batch_size,
+                n_steps=self._n_steps,
+                gamma=self._gamma,
+                n_frames=self._n_frames,
+                real_ratio=self._real_ratio,
+                generated_maxlen=self._generated_maxlen,
+            )
+            LOG.debug("RandomIterator is selected.")
+        elif n_epochs is not None and n_steps is None:
+            iterator = RoundIterator(
+                transitions,
+                batch_size=self._batch_size,
+                n_steps=self._n_steps,
+                gamma=self._gamma,
+                n_frames=self._n_frames,
+                real_ratio=self._real_ratio,
+                generated_maxlen=self._generated_maxlen,
+                shuffle=shuffle,
+            )
+            LOG.debug("RoundIterator is selected.")
+        else:
+            raise ValueError("Either of n_epochs or n_steps must be given.")
 
-    where :math:`a = D_\omega (s, z)`, :math:`z \sim N(0, 0.5)` and
-    :math:`\Phi` is a perturbation scale designated by `action_flexibility`.
-    Although the policy is learned closely to data distribution, the
-    perturbation function can lead to more rewarded states.
+        # setup logger
+        logger = self._prepare_logger(
+            save_metrics,
+            experiment_name,
+            with_timestamp,
+            logdir,
+            verbose,
+            tensorboard_dir,
+        )
 
-    BCQ also leverages twin Q functions and computes weighted average over
-    maximum values and minimum values.
+        # add reference to active logger to algo class during fit
+        self._active_logger = logger
 
-    .. math::
+        # initialize scaler
+        if self._scaler:
+            LOG.debug("Fitting scaler...", scaler=self._scaler.get_type())
+            self._scaler.fit(transitions)
 
-        L(\theta_i) = \mathbb{E}_{s_t, a_t, r_{t+1}, s_{t+1} \sim D}
-            [(y - Q_{\theta_i}(s_t, a_t))^2]
+        # initialize action scaler
+        if self._action_scaler:
+            LOG.debug(
+                "Fitting action scaler...",
+                action_scaler=self._action_scaler.get_type(),
+            )
+            self._action_scaler.fit(transitions)
 
-    .. math::
+        # initialize reward scaler
+        if self._reward_scaler:
+            LOG.debug(
+                "Fitting reward scaler...",
+                reward_scaler=self._reward_scaler.get_type(),
+            )
+            self._reward_scaler.fit(transitions)
 
-        y = r_{t+1} + \gamma \max_{a_i} [
-            \lambda \min_j Q_{\theta_j'}(s_{t+1}, a_i)
-            + (1 - \lambda) \max_j Q_{\theta_j'}(s_{t+1}, a_i)]
+        # instantiate implementation
+        if self._impl is None:
+            LOG.debug("Building models...")
+            transition = iterator.transitions[0]
+            action_size = transition.get_action_size()
+            observation_shape = tuple(transition.get_observation_shape())
+            self.create_impl(
+                self._process_observation_shape(observation_shape), action_size
+            )
+            LOG.debug("Models have been built.")
+        else:
+            LOG.warning("Skip building models since they're already built.")
 
-    where :math:`\{a_i \sim D(s_{t+1}, z), z \sim N(0, 0.5)\}_{i=1}^n`.
-    The number of sampled actions is designated with `n_action_samples`.
+        # save hyperparameters
+        self.save_params(logger)
 
-    Finally, the perturbation function is trained just like DDPG's policy
-    function.
+        # refresh evaluation metrics
+        self._eval_results = defaultdict(list)
 
-    .. math::
+        # refresh loss history
+        self._loss_history = defaultdict(list)
 
-        J(\phi) = \mathbb{E}_{s_t \sim D, a_t \sim D_\omega(s_t, z),
-                              z \sim N(0, 0.5)}
-            [Q_{\theta_1} (s_t, \pi(s_t, a_t))]
+        # training loop
+        total_step = 0
+        for epoch in range(1, n_epochs + 1):
 
-    At inference time, action candidates are sampled as many as
-    `n_action_samples`, and the action with highest value estimation is taken.
+            # dict to add incremental mean losses to epoch
+            epoch_loss = defaultdict(list)
 
-    .. math::
+            range_gen = tqdm(
+                range(len(iterator)),
+                disable=not show_progress,
+                desc=f"Epoch {int(epoch)}/{n_epochs}",
+            )
 
-        \pi'(s) = \text{argmax}_{\pi(s, a_i)} Q_{\theta_1} (s, \pi(s, a_i))
+            iterator.reset()
 
-    Note:
-        The greedy action is not deterministic because the action candidates
-        are always randomly sampled. This might affect `save_policy` method and
-        the performance at production.
+            for itr in range_gen:
 
-    References:
-        * `Fujimoto et al., Off-Policy Deep Reinforcement Learning without
-          Exploration. <https://arxiv.org/abs/1812.02900>`_
+                # generate new transitions with dynamics models
+                new_transitions = self.generate_new_data(
+                    transitions=iterator.transitions,
+                )
+                if new_transitions:
+                    iterator.add_generated_transitions(new_transitions)
+                    LOG.debug(
+                        f"{len(new_transitions)} transitions are generated.",
+                        real_transitions=len(iterator.transitions),
+                        fake_transitions=len(iterator.generated_transitions),
+                    )
 
-    Args:
-        actor_learning_rate (float): learning rate for policy function.
-        critic_learning_rate (float): learning rate for Q functions.
-        imitator_learning_rate (float): learning rate for Conditional VAE.
-        actor_optim_factory (d3rlpy.models.optimizers.OptimizerFactory):
-            optimizer factory for the actor.
-        critic_optim_factory (d3rlpy.models.optimizers.OptimizerFactory):
-            optimizer factory for the critic.
-        imitator_optim_factory (d3rlpy.models.optimizers.OptimizerFactory):
-            optimizer factory for the conditional VAE.
-        actor_encoder_factory (d3rlpy.models.encoders.EncoderFactory or str):
-            encoder factory for the actor.
-        critic_encoder_factory (d3rlpy.models.encoders.EncoderFactory or str):
-            encoder factory for the critic.
-        imitator_encoder_factory (d3rlpy.models.encoders.EncoderFactory or str):
-            encoder factory for the conditional VAE.
-        q_func_factory (d3rlpy.models.q_functions.QFunctionFactory or str):
-            Q function factory.
-        batch_size (int): mini-batch size.
-        n_frames (int): the number of frames to stack for image observation.
-        n_steps (int): N-step TD calculation.
-        gamma (float): discount factor.
-        tau (float): target network synchronization coefficiency.
-        n_critics (int): the number of Q functions for ensemble.
-        update_actor_interval (int): interval to update policy function.
-        lam (float): weight factor for critic ensemble.
-        n_action_samples (int): the number of action samples to estimate
-            action-values.
-        action_flexibility (float): output scale of perturbation function
-            represented as :math:`\Phi`.
-        rl_start_step (int): step to start to update policy function and Q
-            functions. If this is large, RL training would be more stabilized.
-        beta (float): KL reguralization term for Conditional VAE.
-        use_gpu (bool, int or d3rlpy.gpu.Device):
-            flag to use GPU, device ID or device.
-        scaler (d3rlpy.preprocessing.Scaler or str): preprocessor.
-            The available options are `['pixel', 'min_max', 'standard']`.
-        action_scaler (d3rlpy.preprocessing.ActionScaler or str):
-            action preprocessor. The available options are ``['min_max']``.
-        reward_scaler (d3rlpy.preprocessing.RewardScaler or str):
-            reward preprocessor. The available options are
-            ``['clip', 'min_max', 'standard']``.
-        impl (d3rlpy.algos.torch.bcq_impl.BCQImpl): algorithm implementation.
+                with logger.measure_time("step"):
+                    # pick transitions
+                    with logger.measure_time("sample_batch"):
+                        batch = next(iterator)
 
-    """
+                    # update parameters
+                    with logger.measure_time("algorithm_update"):
+                        loss = self.update(batch)
 
+                    # record metrics
+                    for name, val in loss.items():
+                        logger.add_metric(name, val)
+                        epoch_loss[name].append(val)
+
+                    # update progress postfix with losses
+                    if itr % 10 == 0:
+                        mean_loss = {
+                            k: np.mean(v) for k, v in epoch_loss.items()
+                        }
+                        range_gen.set_postfix(mean_loss)
+
+                total_step += 1
+
+                # call callback if given
+                if callback:
+                    callback(self, epoch, total_step)
+
+            # save loss to loss history dict
+            self._loss_history["epoch"].append(epoch)
+            self._loss_history["step"].append(total_step)
+            for name, vals in epoch_loss.items():
+                if vals:
+                    self._loss_history[name].append(np.mean(vals))
+
+            if scorers and eval_episodes:
+                self._evaluate(eval_episodes, scorers, logger)
+
+            # save metrics
+            metrics = logger.commit(epoch, total_step)
+
+            # save model parameters
+            if epoch % save_interval == 0:
+                logger.save_model(total_step, self)
+
+            yield epoch, metrics
+
+        # drop reference to active logger since out of fit there is no active
+        # logger
+        self._active_logger.close()
+        self._active_logger = None
+
+class TBCQM(AlgoBase):
+    '''
+    TBCQ is the very first practical data-driven deep reinforcement learning
+    '''
     _actor_learning_rate: float
     _critic_learning_rate: float
     _imitator_learning_rate: float
@@ -338,7 +479,12 @@ class CustomBCQ(AlgoBase):
     _rl_start_step: int
     _beta: float
     _use_gpu: Optional[Device]
-    _impl: Optional[CustomBCQImpl]
+    _impl: Optional[TBCQMImpl]
+
+    _k: int
+    _tl: int
+    _net_type: str
+    _num_layers: int
 
     def __init__(
         self,
@@ -361,7 +507,7 @@ class CustomBCQ(AlgoBase):
         n_critics: int = 2,
         update_actor_interval: int = 1,
         lam: float = 0.75,
-        n_action_samples: int = 100,
+        n_action_samples: int = 20,
         action_flexibility: float = 0.05,
         rl_start_step: int = 0,
         beta: float = 0.5,
@@ -369,10 +515,15 @@ class CustomBCQ(AlgoBase):
         scaler: ScalerArg = None,
         action_scaler: ActionScalerArg = None,
         reward_scaler: RewardScalerArg = None,
-        impl: Optional[CustomBCQImpl] = None,
+        impl: Optional[TBCQMImpl] = None,
+        k: int = 128,
+        tl: int = 20,
+        net_type: str = "GRU",
+        num_layers: int = 1,
         **kwargs: Any
     ):
-        print('You should not see this message')
+        print('Implimentation of TBCQ!')
+        print(f'batch_size: {batch_size}')
         super().__init__(
             batch_size=batch_size,
             n_frames=n_frames,
@@ -403,11 +554,15 @@ class CustomBCQ(AlgoBase):
         self._beta = beta
         self._use_gpu = check_use_gpu(use_gpu)
         self._impl = impl
+        self._k = k
+        self._tl = tl
+        self._net_type = net_type
+        self._num_layers = num_layers
 
     def _create_impl(
         self, observation_shape: Sequence[int], action_size: int
     ) -> None:
-        self._impl = CustomBCQImpl(
+        self._impl = TBCQMImpl(
             observation_shape=observation_shape,
             action_size=action_size,
             actor_learning_rate=self._actor_learning_rate,
@@ -431,6 +586,10 @@ class CustomBCQ(AlgoBase):
             scaler=self._scaler,
             action_scaler=self._action_scaler,
             reward_scaler=self._reward_scaler,
+            k=self._k,
+            tl=self._tl,
+            net_type=self._net_type,
+            num_layers=self._num_layers
         )
         self._impl.build()
 
@@ -438,6 +597,11 @@ class CustomBCQ(AlgoBase):
         assert self._impl is not None, IMPL_NOT_INITIALIZED_ERROR
 
         metrics = {}
+
+        # XXX: debug
+        # print(f'batch n_steps: {batch.n_steps}')
+        # __import__('pprint').pprint(f'batch observations: {batch.observations.shape}')
+        # print(f'observation shape: {self.observation_shape}')
 
         imitator_loss = self._impl.update_imitator(batch)
         metrics.update({"imitator_loss": imitator_loss})
@@ -461,154 +625,6 @@ class CustomBCQ(AlgoBase):
     def get_action_type(self) -> ActionSpace:
         return ActionSpace.CONTINUOUS
 
-
-class DiscreteBCQ(AlgoBase):
-    r"""Discrete version of Batch-Constrained Q-learning algorithm.
-
-    Discrete version takes theories from the continuous version, but the
-    algorithm is much simpler than that.
-    The imitation function :math:`G_\omega(a|s)` is trained as supervised
-    learning just like Behavior Cloning.
-
-    .. math::
-
-        L(\omega) = \mathbb{E}_{a_t, s_t \sim D}
-            [-\sum_a p(a|s_t) \log G_\omega(a|s_t)]
-
-    With this imitation function, the greedy policy is defined as follows.
-
-    .. math::
-
-        \pi(s_t) = \text{argmax}_{a|G_\omega(a|s_t)
-                / \max_{\tilde{a}} G_\omega(\tilde{a}|s_t) > \tau}
-            Q_\theta (s_t, a)
-
-    which eliminates actions with probabilities :math:`\tau` times smaller
-    than the maximum one.
-
-    Finally, the loss function is computed in Double DQN style with the above
-    constrained policy.
-
-    .. math::
-
-        L(\theta) = \mathbb{E}_{s_t, a_t, r_{t+1}, s_{t+1} \sim D} [(r_{t+1}
-            + \gamma Q_{\theta'}(s_{t+1}, \pi(s_{t+1}))
-            - Q_\theta(s_t, a_t))^2]
-
-    References:
-        * `Fujimoto et al., Off-Policy Deep Reinforcement Learning without
-          Exploration. <https://arxiv.org/abs/1812.02900>`_
-        * `Fujimoto et al., Benchmarking Batch Deep Reinforcement Learning
-          Algorithms. <https://arxiv.org/abs/1910.01708>`_
-
-    Args:
-        learning_rate (float): learning rate.
-        optim_factory (d3rlpy.models.optimizers.OptimizerFactory):
-            optimizer factory.
-        encoder_factory (d3rlpy.models.encoders.EncoderFactory or str):
-            encoder factory.
-        q_func_factory (d3rlpy.models.q_functions.QFunctionFactory or str):
-            Q function factory.
-        batch_size (int): mini-batch size.
-        n_frames (int): the number of frames to stack for image observation.
-        n_steps (int): N-step TD calculation.
-        gamma (float): discount factor.
-        n_critics (int): the number of Q functions for ensemble.
-        action_flexibility (float): probability threshold represented as
-            :math:`\tau`.
-        beta (float): reguralization term for imitation function.
-        target_update_interval (int): interval to update the target network.
-        use_gpu (bool, int or d3rlpy.gpu.Device):
-            flag to use GPU, device ID or device.
-        scaler (d3rlpy.preprocessing.Scaler or str): preprocessor.
-            The available options are `['pixel', 'min_max', 'standard']`
-        reward_scaler (d3rlpy.preprocessing.RewardScaler or str):
-            reward preprocessor. The available options are
-            ``['clip', 'min_max', 'standard']``.
-        impl (d3rlpy.algos.torch.bcq_impl.DiscreteBCQImpl):
-            algorithm implementation.
-
-    """
-
-    _learning_rate: float
-    _optim_factory: OptimizerFactory
-    _encoder_factory: EncoderFactory
-    _q_func_factory: QFunctionFactory
-    _n_critics: int
-    _action_flexibility: float
-    _beta: float
-    _target_update_interval: int
-    _use_gpu: Optional[Device]
-    _impl: Optional[Custom_DiscreteBCQImpl]
-
-    def __init__(
-        self,
-        *,
-        learning_rate: float = 6.25e-5,
-        optim_factory: OptimizerFactory = AdamFactory(),
-        encoder_factory: EncoderArg = "default",
-        q_func_factory: QFuncArg = "mean",
-        batch_size: int = 32,
-        n_frames: int = 1,
-        n_steps: int = 1,
-        gamma: float = 0.99,
-        n_critics: int = 1,
-        action_flexibility: float = 0.3,
-        beta: float = 0.5,
-        target_update_interval: int = 8000,
-        use_gpu: UseGPUArg = False,
-        scaler: ScalerArg = None,
-        reward_scaler: RewardScalerArg = None,
-        impl: Optional[Custom_DiscreteBCQImpl] = None,
-        **kwargs: Any
-    ):
-        super().__init__(
-            batch_size=batch_size,
-            n_frames=n_frames,
-            n_steps=n_steps,
-            gamma=gamma,
-            scaler=scaler,
-            action_scaler=None,
-            reward_scaler=reward_scaler,
-            kwargs=kwargs,
-        )
-        self._learning_rate = learning_rate
-        self._optim_factory = optim_factory
-        self._encoder_factory = check_encoder(encoder_factory)
-        self._q_func_factory = check_q_func(q_func_factory)
-        self._n_critics = n_critics
-        self._action_flexibility = action_flexibility
-        self._beta = beta
-        self._target_update_interval = target_update_interval
-        self._use_gpu = check_use_gpu(use_gpu)
-        self._impl = impl
-
-    def _create_impl(
-        self, observation_shape: Sequence[int], action_size: int
-    ) -> None:
-        self._impl = Custom_DiscreteBCQImpl(
-            observation_shape=observation_shape,
-            action_size=action_size,
-            learning_rate=self._learning_rate,
-            optim_factory=self._optim_factory,
-            encoder_factory=self._encoder_factory,
-            q_func_factory=self._q_func_factory,
-            gamma=self._gamma,
-            n_critics=self._n_critics,
-            action_flexibility=self._action_flexibility,
-            beta=self._beta,
-            use_gpu=self._use_gpu,
-            scaler=self._scaler,
-            reward_scaler=self._reward_scaler,
-        )
-        self._impl.build()
-
-    def _update(self, batch: TransitionMiniBatch) -> Dict[str, float]:
-        assert self._impl is not None, IMPL_NOT_INITIALIZED_ERROR
-        loss = self._impl.update(batch)
-        if self._grad_step % self._target_update_interval == 0:
-            self._impl.update_target()
-        return {"loss": loss}
-
-    def get_action_type(self) -> ActionSpace:
-        return ActionSpace.DISCRETE
+    def _evaluate(self, episodes: List[Episode], scorers: Dict[str, Callable[[Any, List[Episode]], float]], logger: D3RLPyLogger) -> None:
+        # __import__('pprint').pprint(scorers)
+        return super()._evaluate(episodes, scorers, logger)

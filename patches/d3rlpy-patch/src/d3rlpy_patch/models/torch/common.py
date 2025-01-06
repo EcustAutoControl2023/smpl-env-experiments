@@ -62,6 +62,7 @@ class DBlock(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.output_size = output_size
+        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc2 = nn.Linear(input_size, hidden_size)
@@ -69,8 +70,8 @@ class DBlock(nn.Module):
         self.fc_logsigma = nn.Linear(hidden_size, output_size)
 
     def forward(self, input):
-        t = torch.tanh(self.fc1(input))
-        t = t * torch.sigmoid(self.fc2(input))
+        t = torch.tanh(self.fc1(input.to(self.device)))
+        t = t * torch.sigmoid(self.fc2(input.to(self.device)))
         mu = self.fc_mu(t)
         logsigma = self.fc_logsigma(t)
         return mu, logsigma
@@ -132,9 +133,10 @@ class PreProcess(nn.Module):
         self.input_size = input_size
         self.fc1 = nn.Linear(input_size, processed_x_size)
         self.fc2 = nn.Linear(processed_x_size, processed_x_size)
+        self._device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     def forward(self, input) -> torch.Tensor:
-        t = torch.tanh(self.fc1(input))
+        t = torch.tanh(self.fc1(input.to(self._device)))
         t = self.fc2(t)
         return t
 

@@ -65,17 +65,19 @@ class TemporalConditionalVAE(nn.Module):  # type: ignore
         self._action_size = encoder_encoder.action_size
         self._latent_size = decoder_encoder.action_size
 
+        self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
         # encoder
         self._mu = nn.Linear(
             encoder_encoder.get_feature_size(), self._latent_size
-        )
+        ).to(self._device)
         self._logstd = nn.Linear(
             encoder_encoder.get_feature_size(), self._latent_size
-        )
+        ).to(self._device)
         # decoder
         self._fc = nn.Linear(
             decoder_encoder.get_feature_size(), self._action_size
-        )
+        ).to(self._device)
 
         #### TBCQ中的部分 ####
         self._k = k
@@ -88,23 +90,23 @@ class TemporalConditionalVAE(nn.Module):  # type: ignore
         else:
             raise NotImplementedError(f'net_type {net_type} is not supported.')
 
-        self._rnn = RNNClass(3*self._k, self._k, num_layers=self._num_layers)
-        self._process_u = PreProcess(self._action_size, self._k)
-        self._process_x = PreProcess(self._observation_size, self._k)
-        self._process_z = PreProcess(self._latent_size, self._k)
-        self._process_e = PreProcess(self._latent_size, self._k)
+        self._rnn = RNNClass(3*self._k, self._k, num_layers=self._num_layers).to(self._device)
+        self._process_u = PreProcess(self._action_size, self._k).to(self._device)
+        self._process_x = PreProcess(self._observation_size, self._k).to(self._device)
+        self._process_z = PreProcess(self._latent_size, self._k).to(self._device)
+        self._process_e = PreProcess(self._latent_size, self._k).to(self._device)
 
-        self._posterior_gaussian = DBlock(2*self._k, 3*self._k, self._latent_size)
-        self._prior_gaussian = DBlock(self._k, 3*self._k, self._latent_size)
-        self._decoder = DBlock(2*self._k, 3*self._k, self._observation_size)
+        self._posterior_gaussian = DBlock(2*self._k, 3*self._k, self._latent_size).to(self._device)
+        self._prior_gaussian = DBlock(self._k, 3*self._k, self._latent_size).to(self._device)
+        self._decoder = DBlock(2*self._k, 3*self._k, self._observation_size).to(self._device)
 
-        self._e1 = nn.Linear(4*self._k, 750)
-        self._e2 = nn.Linear(750, 750)
-        self._mean = nn.Linear(750, self._latent_size)
-        self._logstd = nn.Linear(750, self._latent_size)
-        self._d1 = nn.Linear(4*self._k, 750)
-        self._d2 = nn.Linear(750, 750)
-        self._d3 = nn.Linear(750, self._action_size)
+        self._e1 = nn.Linear(4*self._k, 750).to(self._device)
+        self._e2 = nn.Linear(750, 750).to(self._device)
+        self._mean = nn.Linear(750, self._latent_size).to(self._device)
+        self._logstd = nn.Linear(750, self._latent_size).to(self._device)
+        self._d1 = nn.Linear(4*self._k, 750).to(self._device)
+        self._d2 = nn.Linear(750, 750).to(self._device)
+        self._d3 = nn.Linear(750, self._action_size).to(self._device)
 
         self._tl = tl
 

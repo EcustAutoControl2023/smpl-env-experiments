@@ -353,17 +353,15 @@ class TBCQImpl(DDPGBaseImpl):
         # TODO: this seems to be slow with image observation
         if self._history_states is None:
             self._history_states = [list(copy.deepcopy(x).detach().cpu().numpy())[0] for _ in range(self._tl)]
-            print(f'TBCQImpl._predict_best_action: length of self._history_states={len(self._history_states)}')
+            # print(f'TBCQImpl._predict_best_action: length of self._history_states={len(self._history_states)}')
         if self._history_actions is None:
             self._history_actions = [list(np.zeros(self._action_size)) for _ in range(self._tl)]
-            print(f'TBCQImpl._predict_best_action: length of self._history_actions={len(self._history_actions)}')
+            # print(f'TBCQImpl._predict_best_action: length of self._history_actions={len(self._history_actions)}')
 
-        state_tensor = torch.Tensor(self._history_states).unsqueeze(1).to(self._device)
-        action_tensor = torch.Tensor(self._history_actions).unsqueeze(1).to(self._device)
+        state_tensor = torch.Tensor(np.array(self._history_states)).unsqueeze(1).to(self._device)
+        action_tensor = torch.Tensor(np.array(self._history_actions)).unsqueeze(1).to(self._device)
 
         assert self._imitator is not None
-        # assert self._policy is not None
-        # assert self._q_func is not None
 
         predicted_action = self._imitator.predict(state_tensor, action_tensor[1:])
 
@@ -376,20 +374,11 @@ class TBCQImpl(DDPGBaseImpl):
         q1 = self.critic.q1(state, action)
         ind = q1.argmax(0)
 
-        # action = action[ind].detach().cpu().numpy().flatten()
-
-
         self._history_states.pop(0)
         self._history_states.append(list(copy.deepcopy(x).detach().cpu().numpy())[0])
         self._history_actions.pop(0)
         self._history_actions.append(list(action[ind].detach().cpu().numpy())[0])
 
-        # repeated_x = self._repeat_observation(x)
-        # action = self._sample_repeated_action(repeated_x)
-        # values = self._predict_value(repeated_x, action)[0]
-        # # pick the best (batch_size * n) -> (batch_size,)
-        # index = values.view(-1, self._n_action_samples).argmax(dim=1)
-        # return action[torch.arange(action.shape[0]), index]
         return action[ind]
 
     def _sample_action(self, x: torch.Tensor) -> torch.Tensor:
@@ -420,7 +409,7 @@ class TBCQImpl(DDPGBaseImpl):
 
             return target_Q
 
-class CustomBCQImpl(DDPGBaseImpl):
+class TBCQMImpl(DDPGBaseImpl):
 
     _imitator_learning_rate: float
     _imitator_optim_factory: OptimizerFactory
@@ -431,8 +420,16 @@ class CustomBCQImpl(DDPGBaseImpl):
     _beta: float
     _policy: Optional[DeterministicResidualPolicy]
     _targ_policy: Optional[DeterministicResidualPolicy]
-    _imitator: Optional[CustomConditionalVAE]
+    _imitator: Optional[TemporalConditionalVAE]
     _imitator_optim: Optional[Optimizer]
+
+    _k: int
+    _tl: int
+    _net_type: str
+    _num_layers: int
+
+    _history_states: Optional[List[torch.Tensor]]
+    _history_actions: Optional[List[Any]]
 
     def __init__(
         self,
@@ -459,6 +456,10 @@ class CustomBCQImpl(DDPGBaseImpl):
         scaler: Optional[Scaler],
         action_scaler: Optional[ActionScaler],
         reward_scaler: Optional[RewardScaler],
+        k: int = 128,
+        tl: int = 20,
+        net_type: str = "GRU",
+        num_layers: int = 1,
     ):
         super().__init__(
             observation_shape=observation_shape,
@@ -491,6 +492,14 @@ class CustomBCQImpl(DDPGBaseImpl):
         self._imitator = None
         self._imitator_optim = None
 
+        self._k = k
+        self._tl = tl
+        self._net_type = net_type
+        self._num_layers = num_layers
+
+        self._history_states = None
+        self._history_actions = None
+
     def build(self) -> None:
         self._build_imitator()
         super().build()
@@ -506,7 +515,7 @@ class CustomBCQImpl(DDPGBaseImpl):
         )
 
     def _build_imitator(self) -> None:
-        self._imitator = create_custom_conditional_vae(
+        self._imitator = create_temporal_conditional_vae(
             observation_shape=self._observation_shape,
             action_size=self._action_size,
             latent_size=2 * self._action_size,
@@ -514,6 +523,10 @@ class CustomBCQImpl(DDPGBaseImpl):
             min_logstd=-4.0,
             max_logstd=15.0,
             encoder_factory=self._imitator_encoder_factory,
+            tl=self._tl,
+            k=self._k,
+            net_type=self._net_type,
+            num_layers=self._num_layers,
         )
 
     def _build_imitator_optim(self) -> None:
@@ -526,17 +539,32 @@ class CustomBCQImpl(DDPGBaseImpl):
         assert self._imitator is not None
         assert self._policy is not None
         assert self._q_func is not None
-        latent = torch.randn(
-            batch.observations.shape[0],
-            2 * self._action_size,
-            device=self._device,
+        # latent = torch.randn(
+        #     batch.observations.shape[0],
+        #     2 * self._action_size,
+        #     device=self._device,
+        # )
+        # clipped_latent = latent.clamp(-0.5, 0.5)
+        # XXX: debug
+        # print(f'TBCQImpl.compute_actor_loss: batch.observations.shape={batch.observations.shape}')
+        # print(f'TBCQImpl.compute_actor_loss: batch.actions.shape={batch.actions.shape}')
+
+        # reconstruct observation and action
+        observation_recon = batch.observations.reshape(-1, self._tl, self.observation_shape[0])
+        action_recon = batch.actions.reshape(-1, self._tl, self._action_size)
+
+        observation_recon = observation_recon.permute(1, 0, 2)
+        action_recon = action_recon.permute(1, 0, 2)
+
+        sampled_action = self._imitator.predict(
+            observation_recon, action_recon[:-1]
         )
-        clipped_latent = latent.clamp(-0.5, 0.5)
-        sampled_action = self._imitator.decode(
-            batch.observations, clipped_latent
-        )
-        action = self._policy(batch.observations, sampled_action)
-        return -self._q_func(batch.observations, action, "none")[0].mean()
+        # FIXME: shape mismatch
+        # action_recon = action_recon.permute(1, 0, 2)
+        # mixed_action = torch.cat([action_recon[:, 1:, :], sampled_action.unsqueeze(1)], dim = 1)
+        # action = self._policy(batch.observations, mixed_action.reshape(-1, self._action_size))
+        action = self._policy(observation_recon[-1], sampled_action)
+        return -self._q_func(observation_recon[-1], action, "none")[0].mean()
 
     @train_api
     @torch_api()
@@ -546,7 +574,15 @@ class CustomBCQImpl(DDPGBaseImpl):
 
         self._imitator_optim.zero_grad()
 
-        loss = self._imitator.compute_error(batch.observations, batch.actions)
+        # reconstruct observation and action
+        observation_recon = batch.observations.reshape(-1, self._tl, self.observation_shape[0])
+        action_recon = batch.actions.reshape(-1, self._tl, self._action_size)
+
+        observation_recon = observation_recon.permute(1, 0, 2)
+        action_recon = action_recon.permute(1, 0, 2)
+
+        # loss = self._imitator.compute_error(batch.observations, batch.actions)
+        loss = self._imitator.compute_error(observation_recon, action_recon)
 
         loss.backward()
         self._imitator_optim.step()
@@ -566,14 +602,17 @@ class CustomBCQImpl(DDPGBaseImpl):
         assert self._policy is not None
         assert self._targ_policy is not None
         # TODO: this seems to be slow with image observation
+        # XXX: debug
+        # print(f'TBCQImpl._sample_repeated_action: repeated_x.shape={repeated_x.shape}')
         flattened_x = repeated_x.reshape(-1, *self.observation_shape)
         # sample latent variable
-        latent = torch.randn(
-            flattened_x.shape[0], 2 * self._action_size, device=self._device
-        )
-        clipped_latent = latent.clamp(-0.5, 0.5)
+        # latent = torch.randn(
+        #     flattened_x.shape[0], 2 * self._action_size, device=self._device
+        # )
+        # clipped_latent = latent.clamp(-0.5, 0.5)
         # sample action
-        sampled_action = self._imitator.decode(flattened_x, clipped_latent)
+        # sampled_action = self._imitator.decode(flattened_x, clipped_latent)
+        sampled_action = self._imitator.decode_new(flattened_x)
         # add residual action
         policy = self._targ_policy if target else self._policy
         action = policy(flattened_x, sampled_action)
@@ -595,12 +634,34 @@ class CustomBCQImpl(DDPGBaseImpl):
 
     def _predict_best_action(self, x: torch.Tensor) -> torch.Tensor:
         # TODO: this seems to be slow with image observation
-        repeated_x = self._repeat_observation(x)
-        action = self._sample_repeated_action(repeated_x)
-        values = self._predict_value(repeated_x, action)[0]
-        # pick the best (batch_size * n) -> (batch_size,)
+        if self._history_states is None:
+            self._history_states = [list(copy.deepcopy(x).detach().cpu().numpy())[0] for _ in range(self._tl)]
+            print(f'TBCQImpl._predict_best_action: length of self._history_states={len(self._history_states)}')
+        if self._history_actions is None:
+            self._history_actions = [list(np.zeros(self._action_size)) for _ in range(self._tl)]
+            print(f'TBCQImpl._predict_best_action: length of self._history_actions={len(self._history_actions)}')
+
+        state_tensor = torch.Tensor(np.array(self._history_states)).unsqueeze(1).to(self._device)
+        action_tensor = torch.Tensor(np.array(self._history_actions)).unsqueeze(1).to(self._device)
+
+        assert self._imitator is not None
+        assert self._policy is not None
+        assert self._q_func is not None
+
+        predicted_action = self._imitator.predict(state_tensor, action_tensor[1:])
+
+        state = x.repeat_interleave(self._n_action_samples, dim=0)
+        action = predicted_action.repeat_interleave(self._n_action_samples, dim=0)
+        action = self._policy(state, action)
+        values = self._q_func(state.reshape(-1, *self.observation_shape), action.view(-1, self.action_size), "none")[0]
         index = values.view(-1, self._n_action_samples).argmax(dim=1)
-        return action[torch.arange(action.shape[0]), index]
+
+        self._history_states.pop(0)
+        self._history_states.append(list(copy.deepcopy(x).detach().cpu().numpy())[0])
+        self._history_actions.pop(0)
+        self._history_actions.append(list(action[index].detach().cpu().numpy())[0])
+
+        return action[index]
 
     def _sample_action(self, x: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError("BCQ does not support sampling action")
@@ -608,108 +669,28 @@ class CustomBCQImpl(DDPGBaseImpl):
     def compute_target(self, batch: TorchMiniBatch) -> torch.Tensor:
         assert self._targ_q_func is not None
         # TODO: this seems to be slow with image observation
+        # FIXME: 这里逻辑还得理一理
         with torch.no_grad():
-            repeated_x = self._repeat_observation(batch.next_observations)
-            actions = self._sample_repeated_action(repeated_x, True)
+            # reconstruct observation and action
+            observation_recon = batch.next_observations.reshape(-1, self._tl, self.observation_shape[0])
+            observation_recon = observation_recon.permute(1, 0, 2)
+            observation_recon = observation_recon.repeat_interleave(self._n_action_samples, dim=1)
+            observation_recon = observation_recon.permute(1, 0, 2)
+            actions = self._sample_repeated_action(observation_recon, True)
+
+
+            # observation_recon = observation_recon.permute(1, 0, 2)
+            # action_recon = action_recon.permute(1, 0, 2)
+
+            # repeated_x = self._repeat_observation(batch.next_observations)
+            # actions = self._sample_repeated_action(repeated_x, True)
+
+            # values = compute_max_with_n_actions(
+            #     batch.next_observations[-1], actions[1:], self._targ_q_func, self._lam
+            # )
 
             values = compute_max_with_n_actions(
                 batch.next_observations, actions, self._targ_q_func, self._lam
             )
 
             return values
-
-
-class Custom_DiscreteBCQImpl(DoubleDQNImpl):
-
-    _action_flexibility: float
-    _beta: float
-    _imitator: Optional[DiscreteImitator]
-
-    def __init__(
-        self,
-        observation_shape: Sequence[int],
-        action_size: int,
-        learning_rate: float,
-        optim_factory: OptimizerFactory,
-        encoder_factory: EncoderFactory,
-        q_func_factory: QFunctionFactory,
-        gamma: float,
-        n_critics: int,
-        action_flexibility: float,
-        beta: float,
-        use_gpu: Optional[Device],
-        scaler: Optional[Scaler],
-        reward_scaler: Optional[RewardScaler],
-    ):
-        super().__init__(
-            observation_shape=observation_shape,
-            action_size=action_size,
-            learning_rate=learning_rate,
-            optim_factory=optim_factory,
-            encoder_factory=encoder_factory,
-            q_func_factory=q_func_factory,
-            gamma=gamma,
-            n_critics=n_critics,
-            use_gpu=use_gpu,
-            scaler=scaler,
-            reward_scaler=reward_scaler,
-        )
-        self._action_flexibility = action_flexibility
-        self._beta = beta
-
-        # initialized in build
-        self._imitator = None
-
-    def _build_network(self) -> None:
-        super()._build_network()
-        assert self._q_func is not None
-        # share convolutional layers if observation is pixel
-        if isinstance(self._q_func.q_funcs[0].encoder, PixelEncoder):
-            self._imitator = DiscreteImitator(
-                self._q_func.q_funcs[0].encoder, self._action_size, self._beta
-            )
-        else:
-            self._imitator = create_discrete_imitator(
-                self._observation_shape,
-                self._action_size,
-                self._beta,
-                self._encoder_factory,
-            )
-
-    def _build_optim(self) -> None:
-        assert self._q_func is not None
-        assert self._imitator is not None
-        q_func_params = list(self._q_func.parameters())
-        imitator_params = list(self._imitator.parameters())
-
-        # TODO: replace this with a cleaner way
-        # retrieve unique elements
-        unique_dict = {}
-        for param in q_func_params + imitator_params:
-            unique_dict[param] = param
-        unique_params = list(unique_dict.values())
-
-        self._optim = self._optim_factory.create(
-            unique_params, lr=self._learning_rate
-        )
-
-    def compute_loss(
-        self, batch: TorchMiniBatch, q_tpn: torch.Tensor
-    ) -> torch.Tensor:
-        assert self._imitator is not None
-        loss = super().compute_loss(batch, q_tpn)
-        imitator_loss = self._imitator.compute_error(
-            batch.observations, batch.actions.long()
-        )
-        return loss + imitator_loss
-
-    def _predict_best_action(self, x: torch.Tensor) -> torch.Tensor:
-        assert self._imitator is not None
-        assert self._q_func is not None
-        log_probs = self._imitator(x)
-        ratio = log_probs - log_probs.max(dim=1, keepdim=True).values
-        mask = (ratio > math.log(self._action_flexibility)).float()
-        value = self._q_func(x)
-        normalized_value = value - value.min(dim=1, keepdim=True).values
-        action = (normalized_value * cast(torch.Tensor, mask)).argmax(dim=1)
-        return action
