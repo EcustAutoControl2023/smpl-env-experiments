@@ -10,3 +10,4 @@
 [submodule "extern-lib/smpl"]
 	path = extern-lib/smpl
 	url = git@github.com:EcustAutoControl2023/smpl.git
+	branch = gym0.26
