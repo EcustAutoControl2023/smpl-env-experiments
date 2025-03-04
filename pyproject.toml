@@ -17,13 +17,14 @@ dependencies = [
     "fastodeint",
     "pensimpy",
     "mpctools",
-    "smpl",
     "scikit-learn>=1.6.1",
     "pygame>=2.6.1",
     "minari>=0.5.2",
     "huggingface-hub>=0.28.1",
     "gymnasium-robotics>=1.2.4",
     "pyqt6>=6.8.1",
+    "d3rlpy-patch",
+    "smpl",
 ]
 
 [tool.uv]
@@ -36,4 +37,8 @@ dev-dependencies = [
 fastodeint = { path = "./extern-lib/fastodeint/" }
 pensimpy = { path = "./extern-lib/PenSimPy/" }
 mpctools = { path = "./extern-lib/mpctools_casadi/" }
+d3rlpy-patch = { workspace = true }
 smpl = { path = "extern-lib/smpl", editable = true }
+
+[tool.uv.workspace]
+members = ["patches/d3rlpy-patch"]
