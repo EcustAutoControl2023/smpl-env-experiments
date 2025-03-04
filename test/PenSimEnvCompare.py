@@ -33,7 +33,6 @@ recipe_combo = RecipeCombo(recipe_dict=recipe_dict)
 # set up the environment
 normalize = False
 env = PenSimEnvGym(recipe_combo=recipe_combo, normalize=normalize)
-state = env.reset(normalize=normalize, random_seed_ref=6886)
 # load one batch of the sampled data
 load_just_a_file = "../extern-lib/smpl/smpl/configdata/pensimenv/random_batch_0.csv"
 dataset_obj = PeniControlData(load_just_a_file=load_just_a_file, normalize=normalize)
@@ -43,10 +42,14 @@ else:
     raise ValueError("Penicillin_Control_Challenge data initialization failed.")
 dataset = dataset_obj.get_dataset()
 
-total_reward = 0.0
-for step in range(NUM_STEPS):
-    state, reward, done, done, info = env.step(dataset["actions"][step].tolist())
-    total_reward += reward
-    if step % 1000 == 0:
-        print("reward, total_reward:", reward, total_reward)
-print("your total reward is (by default, should be around 3224):", total_reward)
+for i in range(2):
+    total_reward = 0.0
+    state = env.reset(normalize=normalize, random_seed_ref=i)
+    for step in range(NUM_STEPS):
+        state, reward, done, done, info = env.step(dataset["actions"][step].tolist())
+        total_reward += reward
+        if reward < -100:
+            print("step, reward:", step, reward)
+        if step % 1000 == 0:
+            print("reward, total_reward:", reward, total_reward)
+    print("your total reward is (by default, should be around 3224):", total_reward)
