@@ -44,8 +44,19 @@ else:
 dataset = dataset_obj.get_dataset()
 
 total_reward = 0.0
+print(NUM_STEPS)
 for step in range(NUM_STEPS):
-    state, reward, done, done, info = env.step(dataset["actions"][step].tolist())
+    raw_action = [value for value in recipe_combo.get_values_dict_at(step).values()]
+    action = [
+        raw_action[1],
+        raw_action[2],
+        raw_action[3],
+        raw_action[4],
+        raw_action[0],
+        raw_action[5],
+    ]
+    state, reward, done, done, info = env.step(action)
+    # state, reward, done, done, info = env.step(dataset["actions"][step].tolist())
     total_reward += reward
     if step % 1000 == 0:
         print("reward, total_reward:", reward, total_reward)
