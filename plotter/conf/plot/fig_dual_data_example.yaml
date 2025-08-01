@@ -1,0 +1,74 @@
+# @package _global_.plot
+
+# 绘图类型
+plot_type: dual_data_plot
+
+# 预先数据部分（从原点开始绘制）
+pre_experiment_dirs:
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/d3rlpy_logs/cql_pensimenv_for_online_*"
+
+pre_filename: "environment.csv"
+
+pre_colors:
+  - gray
+
+pre_labels:
+  - "Offline Training (CQL)"
+
+# 主要数据部分
+experiment_dirs:
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_cql-sacifpd_seed-*"
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/d3rlpy_logs/SACIF_env-pensimenv_reward-dense_type-online_only_explorer-off_critic-norm-on_rate0_error_code_seed-*"
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-online_only_explorer-off_critic-norm-on_rate0_cql-sacifpd_seed-*"
+
+# x 轴offset设置（"pre"表示接着pre_后绘制，"ori"表示从原点开始绘制）
+x_offsets:
+  - "pre" # 第一个数据集接着pre_后绘制
+  - "pre" # 第二个数据集从原点开始绘制
+  - "ori" # 第三个数据集从原点开始绘制
+
+# 竖线位置，代表分割两组数据的竖线
+vline_position: 100
+
+# 文件名
+filename: evaluation.csv
+
+# 图表标题和轴标签
+title: ""
+xlabel: "Epoch"
+ylabel: "Evaluation Return"
+
+# 图表范围
+ylim: [-100, 5000]
+
+# 显示数据范围区域
+show_range: true
+
+# 颜色和标签
+colors:
+  - red
+  - blue
+  - green
+
+labels:
+  - "Ours"
+  - "Online Training (SAC-100)"
+  - "Online Training (SAC-200)"
+
+# 基准线值 (可选)
+baseline_value: 3224
+
+# 离线值点 (可选)
+offline_value: 3000
+offline_marker: "*"
+offline_marker_size: 40
+offline_marker_color: "black"
+offline_label: "Ours Starting Point"
+
+# 渲染模式和保存路径
+render_mode: plot
+save_path: "dual_data_plot_example.png"
+dpi: 300
+
+# 是否显示图例
+legend: true

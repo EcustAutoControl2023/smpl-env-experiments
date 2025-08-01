@@ -1,0 +1,57 @@
+# @package _global_.plot
+
+# 绘图类型
+plot_type: experiment_oo
+
+# 离线和在线实验目录列表
+offline_experiment_dirs:
+  - "./d3rlpy_logs/bear_Pensim_for_online_*"
+  - "./d3rlpy_logs/crr_Pensim_for_online_*"
+  - "./d3rlpy_logs/cql_Pensim_for_online_*"
+  - "./d3rlpy_logs/calql_Pensim_for_online_*"
+
+online_experiment_dirs:
+  - "./d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_bear-sac_seed-*"
+  - "./d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_crr-sac_seed-*"
+  - "./d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_cql-sac_seed-*"
+  - "./d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_calql-sac_seed-*"
+
+# 文件名
+offline_filename: environment.csv
+online_filename: evaluation.csv
+
+# 图表标题和轴标签
+title: "Different Offline+Online Combinations"
+xlabel: "Epoch"
+ylabel: "Evaluation Return"
+
+# 图表范围
+ylim: [-100, 5000]
+
+# 数据处理
+offline_data_points: 10  # 使用离线实验最后的10个数据点
+x_range: 110  # 使用1-110的x轴范围
+
+# 显示数据范围区域
+show_range: true
+
+# 颜色和标签
+colors:
+  - blue
+  - red
+  - yellow
+  - green
+
+labels:
+  - "bear+sac"
+  - "crr+sac"
+  - "cql+sac"
+  - "calql+sac"
+
+# 渲染模式和保存路径
+render_mode: ${output.render_mode}
+save_path: ${output.save_path}
+dpi: ${output.dpi}
+
+# 是否显示图例
+legend: true

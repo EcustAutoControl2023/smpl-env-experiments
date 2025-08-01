@@ -1,0 +1,57 @@
+# @package _global_.plot
+
+# 绘图类型
+plot_type: custom
+
+# 图表标题和轴标签
+title: "Custom Plot"
+xlabel: "X-Axis"
+ylabel: "Y-Axis"
+
+# 图表范围（可选）
+ylim: [-100, 5000]
+xlim: [0, 100]
+
+# 绘图指令列表
+instructions:
+  # 每个指令包含一个函数名和参数
+  - function: line_plot
+    params:
+      x: [0, 10, 20, 30, 40, 50]
+      y: [0, 100, 500, 1000, 2000, 3000]
+      color: blue
+      label: "Line 1"
+      linestyle: "-"
+      
+  - function: line_plot
+    params:
+      x: [0, 10, 20, 30, 40, 50]
+      y: [0, 300, 600, 1200, 1800, 2500]
+      color: red
+      label: "Line 2"
+      linestyle: "--"
+      
+  - function: scatter_plot
+    params:
+      x: [10, 30, 50]
+      y: [500, 1500, 3500]
+      color: green
+      label: "Important Points"
+      marker: "o"
+      size: 100
+      
+  - function: horizontal_line
+    params:
+      y_value: 2000
+      color: black
+      linestyle: ":"
+      label: "Threshold"
+      linewidth: 1.5
+
+# 渲染模式和保存路径
+render_mode: ${output.render_mode}
+save_path: ${output.save_path}
+dpi: ${output.dpi}
+
+# 是否显示图例
+legend: true

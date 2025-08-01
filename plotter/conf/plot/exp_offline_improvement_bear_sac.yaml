@@ -1,0 +1,50 @@
+# @package _global_.plot
+
+# 绘图类型
+plot_type: experiment_comparison
+
+# 实验目录列表
+experiment_dirs:
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0-bear-sacifpd_seed-*"
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-online_only_explorer-off_critic-norm-on_rate0-bear-sacifpd_seed-*"
+
+# 文件名
+filename: evaluation.csv
+
+# 图表标题和轴标签
+title: "Error Code Handling"
+xlabel: "Epoch"
+ylabel: "Evaluation Return"
+
+# 图表范围
+ylim: [-100, 5000]
+
+# 显示数据范围区域
+show_range: true
+
+# 颜色和标签
+colors:
+  - blue
+  - red
+
+labels:
+  - "online(sac)"
+  - "ours"
+
+# 基准线值 (可选)
+baseline_value: 3224
+
+# 离线值点 (可选)
+offline_value: 3000  # 设置具体的离线值
+offline_marker: "*"
+offline_marker_size: 10
+offline_marker_color: "black"
+offline_label: "offline(CQL)"
+
+# 渲染模式和保存路径
+render_mode: ${output.render_mode}
+save_path: ${output.save_path}
+dpi: ${output.dpi}
+
+# 是否显示图例
+legend: true

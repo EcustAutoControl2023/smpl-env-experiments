@@ -1,0 +1,52 @@
+# @package _global_.plot
+
+# 绘图类型
+plot_type: ablation_study
+
+# 实验名称列表
+experiment_names:
+  - "Baseline"
+  - "No Feature A"
+  - "No Feature B"
+  - "No Feature C"
+  - "Full Model"
+
+# 各实验的性能值
+values:
+  - 2500
+  - 1800
+  - 2100
+  - 2300
+  - 3000
+
+# 误差条（可选）
+error_bars:
+  - 150
+  - 120
+  - 180
+  - 130
+  - 160
+
+# 颜色列表
+colors:
+  - "#4C72B0"  # 蓝色
+  - "#C44E52"  # 红色
+  - "#55A868"  # 绿色
+  - "#8172B3"  # 紫色
+  - "#CCB974"  # 黄色
+
+# 图表标题和轴标签
+title: "Ablation Study Results"
+xlabel: "Components"
+ylabel: "Performance"
+
+# 图表范围（可选）
+ylim: [0, 3500]
+
+# 渲染模式和保存路径
+render_mode: ${output.render_mode}
+save_path: ${output.save_path}
+dpi: ${output.dpi}
+
+# 是否显示图例
+legend: false
