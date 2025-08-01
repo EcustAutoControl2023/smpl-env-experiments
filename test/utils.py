@@ -1,3 +1,4 @@
+from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 import d3rlpy
@@ -194,9 +195,16 @@ def plot_dataset(dataset, plot: bool = False):
         plt.show()
 
 
-def get_datasets(env_name: str, plot: bool = False):
+def get_datasets(env_name: str, dataset_path: Optional[str] = None, plot: bool = False):
+    training_dataset_loc = None
     if env_name == "mabenv":
-        training_dataset_loc = "./offline_datasets/mabenv/mpc/1000_normalize=False.pkl"
+        if dataset_path is None:
+            training_dataset_loc = (
+                "./offline_datasets/mabenv/mpc/1000_normalize=False.pkl"
+            )
+        else:
+            training_dataset_loc = dataset_path
+
         eval_dataset_loc = "./offline_datasets/mabenv/mpc/100_normalize=False.pkl"
 
         with open(training_dataset_loc, "rb") as handle:
@@ -219,7 +227,12 @@ def get_datasets(env_name: str, plot: bool = False):
         plot_dataset(dataset, plot)
         return dataset
     elif env_name == "smbenv":
-        training_dataset_loc = "./offline_datasets/smbenv/mpc/100_normalize=False.pkl"
+        if dataset_path is not None:
+            training_dataset_loc = dataset_path
+        else:
+            training_dataset_loc = (
+                "./offline_datasets/smbenv/mpc/1000_normalize=False.pkl"
+            )
 
         with open(training_dataset_loc, "rb") as handle:
             training_dataset_pkl = pickle.load(handle)
@@ -233,9 +246,12 @@ def get_datasets(env_name: str, plot: bool = False):
         plot_dataset(dataset, plot)
         return dataset
     elif env_name == "reactorenv":
-        training_dataset_loc = (
-            "./offline_datasets/reactorenv/mpc_step_50_normalize=False.pkl"
-        )
+        if dataset_path is not None:
+            training_dataset_loc = dataset_path
+        else:
+            training_dataset_loc = (
+                "./offline_datasets/reactorenv/mpc_step_50_normalize=False.pkl"
+            )
         eval_dataset_loc = "./offline_datasets/reactorenv/100_normalize=False.pkl"
 
         with open(training_dataset_loc, "rb") as handle:
@@ -250,9 +266,12 @@ def get_datasets(env_name: str, plot: bool = False):
         plot_dataset(dataset, plot)
         return dataset
     elif env_name == "atropineenv":
-        training_dataset_loc = (
-            "./offline_datasets/atropineenv/10000_normalize=False.pkl"
-        )
+        if dataset_path is not None:
+            training_dataset_loc = dataset_path
+        else:
+            training_dataset_loc = (
+                "./offline_datasets/atropineenv/10000_normalize=False.pkl"
+            )
         eval_dataset_loc = "./offline_datasets/atropineenv/100_normalize=False.pkl"
 
         with open(training_dataset_loc, "rb") as handle:
@@ -267,7 +286,12 @@ def get_datasets(env_name: str, plot: bool = False):
         plot_dataset(dataset, plot)
         return dataset
     elif env_name == "pensimenv":
-        training_dataset_loc = "./offline_datasets/pensimenv/900_normalize=False.pkl"
+        if dataset_path is not None:
+            training_dataset_loc = dataset_path
+        else:
+            training_dataset_loc = (
+                "./offline_datasets/pensimenv/900_normalize=False.pkl"
+            )
         eval_dataset_loc = "./offline_datasets/pensimenv/110_normalize=False.pkl"
 
         with open(training_dataset_loc, "rb") as handle:
@@ -321,7 +345,8 @@ def get_recipe(env_name: str):
         }
 
         load_just_a_file = (
-            "../extern-lib/smpl/smpl/configdata/pensimenv/random_batch_0.csv"
+            # "../extern-lib/smpl/smpl/configdata/pensimenv/random_batch_0.csv"
+            "../../smpl-env-experiments/experiments/smpl-experiments/pensimenv_experiments/pensimpy_1010_samples/gpei_batch_0.csv"
         )
         dataset_obj = PeniControlData(
             load_just_a_file=load_just_a_file, normalize=False
@@ -336,7 +361,7 @@ def get_recipe(env_name: str):
 
 
 if __name__ == "__main__":
-    env_name = "pensimenv"
+    env_name = "smbenv"
     dataset = get_datasets(env_name)
     assert dataset is not None, "Dataset is None"
-    print(len(dataset.episodes))
+    print(dataset.episodes[0])
