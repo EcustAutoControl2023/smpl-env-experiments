@@ -131,6 +131,17 @@ class SACIFImpl(DDPGBaseImpl):
             )
             return target - entropy
 
+    def compute_mean_variance(
+        self, observation: torch.Tensor, action: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        with torch.no_grad():
+            mean, variance = self._q_func_forwarder.compute_mean_variance(
+                observation,
+                action,
+                reduction="mean",
+            )
+            return mean, variance
+
     def inner_sample_action(self, x: TorchObservation) -> torch.Tensor:
         dist = build_squashed_gaussian_distribution(self._modules.policy(x))
         return dist.sample()

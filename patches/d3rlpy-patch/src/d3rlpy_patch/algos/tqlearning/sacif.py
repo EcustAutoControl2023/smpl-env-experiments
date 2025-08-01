@@ -3,7 +3,10 @@ import math
 from queue import Queue
 from typing import Optional, Callable
 from d3rlpy.algos.utility import assert_action_space_with_env, build_scalers_with_env
+from d3rlpy.interface import QLearningAlgoProtocol
 from d3rlpy.metrics import evaluate_qlearning_with_environment
+import torch
+from torch import exp, sqrt
 from d3rlpy_patch.algos.experts import Expert
 from tqdm.std import trange
 from typing_extensions import Self
@@ -18,8 +21,12 @@ from d3rlpy.base import (
     save_config,
 )
 from d3rlpy.constants import ActionSpace, LoggingStrategy
-from d3rlpy.dataset import ReplayBufferBase, create_fifo_replay_buffer
-from d3rlpy.logging import FileAdapterFactory, LoggerAdapterFactory
+from d3rlpy.dataset import (
+    MixedReplayBuffer,
+    ReplayBufferBase,
+    create_fifo_replay_buffer,
+)
+from d3rlpy.logging import FileAdapter, FileAdapterFactory, LoggerAdapterFactory
 from d3rlpy.models.builders import (
     create_categorical_policy,
     create_continuous_q_function,
@@ -32,7 +39,7 @@ from d3rlpy.models.q_functions import QFunctionFactory, make_q_func_field
 from d3rlpy.optimizers.optimizers import OptimizerFactory, make_optimizer_field
 from d3rlpy.types import Shape
 from d3rlpy.algos.qlearning.base import Explorer, QLearningAlgoBase
-from .torch.sac_impl import (
+from .torch.sacif_impl import (
     DiscreteSACIFImpl,
     DiscreteSACIFModules,
     SACIFImpl,
@@ -131,10 +138,28 @@ class SACIFConfig(LearnableConfig):
     n_critics: int = 2
     initial_temperature: float = 1.0
 
+    ema_beta: float = 0.995
+
     intervention: bool = False
-    intervention_rate: float = 0.5
+    intervention_method: str = "Constant"
+    intervention_rate: float = 0.5  # grid search parameter {0.25, 0.5, 0.75, 1.0}
+    intervention_length: int = 3
+    intervention_degree: float = 0.5
+    intervention_k: int = 3
+    intervention_T: int = 1
+
     intervention_stop_step: int = 0
-    intervention_length: int = 10
+    intervention_degree_start: float = 0.5
+    intervention_degree_end: float = 0.5
+
+    # FIXME: mixing_ratio is not used in SACIF
+    # XXX: for compatitive
+    mixing_ratio: float = 0.5
+
+    buffer_method: str = "Constant"
+    buffer_start: float = 0.5
+    buffer_end: float = 0.5
+    buffer_k: int = 3
 
     def create(self, device: DeviceArg = False, enable_ddp: bool = False) -> "SACIF":
         return SACIF(self, device, enable_ddp)
@@ -144,7 +169,7 @@ class SACIFConfig(LearnableConfig):
         return "sac_if"
 
 
-class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig]):
+class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig], QLearningAlgoProtocol):
     def inner_create_impl(self, observation_shape: Shape, action_size: int) -> None:
         policy = create_normal_policy(
             observation_shape,
@@ -245,6 +270,7 @@ class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig]):
         show_progress: bool = True,
         callback: Optional[Callable[[Self, int, int], None]] = None,
         expert: Optional[Expert] = None,
+        offline_buffer: Optional[ReplayBufferBase] = None,
     ) -> None:
         """Start training loop of online deep reinforcement learning.
 
@@ -280,6 +306,8 @@ class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig]):
         # create default replay buffer
         if buffer is None:
             buffer = create_fifo_replay_buffer(1000000, env=env)
+        # check offline buffer
+        assert offline_buffer is not None, "offline_buffer is None"
 
         # check action-space
         assert_action_space_with_env(self, env)
@@ -316,19 +344,115 @@ class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig]):
         action_queue = []
         reward_queue = []
 
+        # ema rollout return
+        rollout_return_ema = 0.0
+        # ema evaluation return
+        eval_return_ema = 0.0
+        # 平滑化の係数
+        alpha = 0.99
+
         # start training loop
         observation, _ = env.reset()
         rollout_return = 0.0
         prev_intervention = False
 
+        error_num = 0
+        running_var_q = 0
+        action = None
+
         for total_step in xrange(1, n_steps + 1):
             with logger.measure_time("step"):
+                # timestep in the current epoch
                 timestep = total_step % n_steps_per_epoch
                 # sample exploration action
                 with logger.measure_time("inference"):
                     if total_step < random_steps:
                         action = env.action_space.sample()
                     elif expert:
+                        if self._config.intervention_method == "Constant":
+                            self._config.intervention_degree = (
+                                self._config.intervention_degree_start
+                            )
+                        elif self._config.intervention_method == "Linear":
+                            self._config.intervention_degree = (
+                                self._config.intervention_degree_start
+                                + (
+                                    self._config.intervention_degree_end
+                                    - self._config.intervention_degree_start
+                                )
+                                * (
+                                    timestep
+                                    / (self._config.intervention_T * n_steps_per_epoch)
+                                )
+                            )
+                        elif self._config.intervention_method == "Exponential":
+                            self._config.intervention_degree = np.exp(
+                                -1
+                                * self._config.intervention_T
+                                * (timestep / n_steps_per_epoch)
+                            )
+                        elif self._config.intervention_method == "ConfidenceBased":
+                            # Compute uncertainty U_A(s_t, a_t)
+                            # add demension for batch processing
+                            if action is None:
+                                # if action is None, keep the default intervention degree
+                                pass
+                            else:
+                                batch_observation = np.expand_dims(observation, axis=0)
+                                batch_action = np.expand_dims(action, axis=0)
+                                # convert to torch tensor
+                                batch_observation = torch.tensor(
+                                    batch_observation,
+                                    dtype=torch.float32,
+                                    device=self._device,
+                                )
+                                batch_action = torch.tensor(
+                                    batch_action,
+                                    dtype=torch.float32,
+                                    device=self._device,
+                                )
+                                assert self._impl is not None, (
+                                    "SACIFImpl is not initialized"
+                                )
+                                mean, var = self._impl.compute_mean_variance(
+                                    batch_observation, batch_action
+                                )
+                                # update running EMA of variance
+                                running_var_q = (
+                                    self._config.ema_beta * running_var_q
+                                    + (1 - self._config.ema_beta) * var
+                                    + 1e-8
+                                )
+                                u_a = sqrt(var / running_var_q)
+                                # U_A save to logger
+                                self._config.intervention_degree = float(
+                                    self._config.intervention_degree_start
+                                    / (
+                                        1
+                                        + exp(-self._config.intervention_k * (u_a - 1))
+                                    )
+                                )
+
+                                logger.add_metric("U_A", u_a.item())
+                        else:
+                            raise ValueError(
+                                f"Unknown intervention method: {self._config.intervention_method}"
+                            )
+
+                        logger.add_metric(
+                            "intervention_degree",
+                            self._config.intervention_degree,
+                        )
+                        assert isinstance(logger._adapter, FileAdapter), (
+                            "Logger adapter is not FileAdapter"
+                        )
+                        file_path = (
+                            logger._adapter._logdir
+                            + f"/intervention_degree_{n_steps_per_epoch * (total_step // n_steps_per_epoch + 1)}.csv"
+                        )
+                        with open(file_path, "a") as f:
+                            f.write(f"{timestep},{self._config.intervention_degree}\n")
+
                         if not self._config.intervention:
                             self._config.intervention = bool(
                                 np.random.choice(
@@ -342,14 +466,24 @@ class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig]):
                             )
                             if self._config.intervention:
                                 self._config.intervention_stop_step = (
-                                    total_step + self._config.intervention_length
+                                    timestep + self._config.intervention_length
                                 )
-                        if total_step == self._config.intervention_stop_step:
+                        if (
+                            self._config.intervention
+                            and timestep == self._config.intervention_stop_step
+                        ):
                             self._config.intervention = False
 
                         x = observation.reshape((1,) + observation.shape)
                         if self._config.intervention:
-                            action = expert.guide(self, x, timestep)
+                            action_infer = self.sample_action(
+                                np.expand_dims(observation, axis=0)
+                            )[0]
+                            action = (
+                                self._config.intervention_degree
+                                * expert.guide(self, x, timestep)
+                                + (1 - self._config.intervention_degree) * action_infer
+                            )
                         else:
                             if explorer:
                                 x = observation.reshape((1,) + observation.shape)
@@ -371,8 +505,15 @@ class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig]):
                         buffer.append(
                             observation_queue[-1],
                             action_queue[-1],
-                            reward_queue[-1] - 1,
+                            reward_queue[-1] - self._config.intervention_degree,
                         )
+                    else:
+                        if timestep != 1:
+                            buffer.append(
+                                observation_queue[-1],
+                                action_queue[-1],
+                                reward_queue[-1],
+                            )
                 else:
                     if timestep != 1:
                         buffer.append(
@@ -392,8 +533,8 @@ class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig]):
                     ) = env.step(action)
                     rollout_return += float(reward)
 
-                # if timestep == 1:
-                #     buffer.append(observation, action, float(reward))
+                if timestep == 1:
+                    buffer.append(observation, action, float(reward))
 
                 clip_episode = terminal or truncated
 
@@ -406,8 +547,16 @@ class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig]):
                 # reset if terminated
                 if clip_episode:
                     buffer.clip_episode(terminal)
+                    if _.get("error_occurred", False):
+                        error_num += 1
                     observation, _ = env.reset()
                     logger.add_metric("rollout_return", rollout_return)
+                    if rollout_return_ema == 0.0:
+                        rollout_return_ema = rollout_return
+                    rollout_return_ema = (
+                        alpha * rollout_return_ema + (1 - alpha) * rollout_return
+                    )
+                    logger.add_metric("rollout_return_ema", rollout_return_ema)
                     rollout_return = 0.0
                 else:
                     observation = next_observation
@@ -420,10 +569,38 @@ class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig]):
                     and buffer.transition_count > self.batch_size
                 ):
                     if total_step % update_interval == 0:
+                        mix_ratio = None
+                        if self._config.buffer_method == "Constant":
+                            mix_ratio = self._config.buffer_start
+                        elif self._config.buffer_method == "Linear":
+                            mix_ratio = self._config.buffer_start + (
+                                self._config.buffer_end - self._config.buffer_start
+                            ) * (timestep / (self._config.buffer_k * n_steps_per_epoch))
+                        elif self._config.buffer_method == "Exponential":
+                            mix_ratio = np.exp(
+                                -1
+                                * self._config.buffer_k
+                                * (timestep / n_steps_per_epoch)
+                            )
+                        else:
+                            raise ValueError(
+                                f"Unknown buffer method: {self._config.buffer_method}"
+                            )
+
+                        assert mix_ratio is not None, "mix_ratio is None"
+                        mix_buffer = MixedReplayBuffer(
+                            primary_replay_buffer=buffer,
+                            secondary_replay_buffer=offline_buffer,
+                            secondary_mix_ratio=mix_ratio,
+                        )
+
                         for _ in range(n_updates):  # controls UTD ratio
                             # sample mini-batch
                             with logger.measure_time("sample_batch"):
-                                batch = buffer.sample_transition_batch(self.batch_size)
+                                # batch = buffer.sample_transition_batch(self.batch_size)
+                                batch = mix_buffer.sample_transition_batch(
+                                    self.batch_size
+                                )
 
                             # update parameters
                             with logger.measure_time("algorithm_update"):
@@ -453,6 +630,10 @@ class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig]):
                         epsilon=eval_epsilon,
                     )
                     logger.add_metric("evaluation", eval_score)
+                    if eval_return_ema == 0.0:
+                        eval_return_ema = eval_score
+                    eval_return_ema = alpha * eval_return_ema + (1 - alpha) * eval_score
+                    logger.add_metric("evaluation_ema", eval_return_ema)
 
                 if epoch % save_interval == 0:
                     logger.save_model(total_step, self)
@@ -467,7 +648,9 @@ class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig]):
                 reward_queue = []
                 prev_intervention = False
                 self._config.intervention = False
-                # observation, _ = env.reset()
+                observation, _ = env.reset()
+                logger.add_metric("error_occurred", error_num)
+                error_num = 0
 
         # clip the last episode
         buffer.clip_episode(False)
