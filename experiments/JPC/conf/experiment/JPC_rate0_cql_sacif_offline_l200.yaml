@@ -1,0 +1,56 @@
+# Configuration for CQL+SACIF on PenSim environment
+# 
+# This experiment uses:
+# - CQL as the offline algorithm
+# - SACIF as the online algorithm
+# - PenSim as the environment
+
+# Set up the configuration composition
+defaults:
+  - algorithm: cql        # Use CQL for offline algorithm
+  - algorithm@online_algo: sacif      # Use SACIF for online algorithm
+  - environment: pensimenv # Use PenSim environment
+  - _self_                # Apply this config last
+
+# Experiment name and parameters
+exp_name: "deleted_experiment"
+exp_length: 1  # Length of the experiment in steps
+random_seed_range: 1  # Number of seeds to run
+random_seed: 0  # Initial random seed (will be updated during execution)
+
+# Algorithm configuration overrides
+model:
+  use_layer_norm: true
+  offline_algo: "cql"  # Use CQL as offline algorithm
+  online_algo: "sacif" # Use SACIF as online algorithm
+
+buffer:
+  method: "Linear"  # Use constant buffer method
+  start: 1            # Lambda parameter for buffer
+  end: 0.0            # End value for buffer
+  k: 1                # Parameter for buffer size, k*T (T -> total steps)
+
+# Expert intervention configuration
+intervention:
+  rate: 0.0
+  length: 3
+
+# Exploration configuration
+exploration:
+  use_explorer: false
+  explorer_epsilon: 0.3
+
+# Policy initialization
+policy_init:
+  offline_exp_suffix: "with_gpei_data_l200_plot"
+  offline_init_policy: true
+  use_offline_pretrained_model: false
+  offline_pretrain_model_path: "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/experiments/JPC/d3rlpy_logs/cql_pensimenv_with_gpei_data_0_20250729190855/model_1150.d3"
+  offline_dataset_path: "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/offline_datasets/pensimenv/900_normalize=False.pkl"
+
+# Training parameters
+training:
+  offline_pretrain_steps: 1150
+  offline_pretrain_epoch: 200
+  online_steps: 1150
+  online_epoch: 100
