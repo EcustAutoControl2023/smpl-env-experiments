@@ -1,0 +1,25 @@
+
+# Configuration for SACIF (Soft Actor-Critic with Intervention Feedback) algorithm
+
+# Algorithm settings for model configuration
+model:
+  online_algo: "sacif"  # Set the online algorithm to SACIF
+  use_layer_norm: False  # Disable layer normalization by default
+
+# SACIF-specific parameters
+# sacif:
+#   alpha: 0.2
+#   batch_size: 256
+#   actor_learning_rate: 3e-4
+#   critic_learning_rate: 3e-4
+#   temp_learning_rate: 3e-4
+#   gamma: 0.99
+#   tau: 0.005
+#   n_critics: 2
+#   target_entropy_factor: 1.0
+#   use_gpu: true
+
+# Default intervention settings for SACIF
+intervention:
+  rate: 0.0
+  length: 3

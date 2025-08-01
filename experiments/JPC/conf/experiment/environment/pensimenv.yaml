@@ -1,0 +1,8 @@
+# Configuration for PenSim environment
+
+# Environment configuration
+name: "pensimenv"
+dense_reward: true
+normalize: false
+standard_reward_style: "yield"
+initial_state_deviation_ratio: 0.05

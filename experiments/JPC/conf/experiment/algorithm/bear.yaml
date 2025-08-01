@@ -1,0 +1,14 @@
+# Configuration for CQL (Conservative Q-Learning) algorithm
+
+# Algorithm settings for model configuration
+model:
+  offline_algo: "bear"  # Set the offline algorithm to CQL
+  use_layer_norm: false  # Disable layer normalization by default
+
+# CQL-specific parameters
+# cql:
+#   alpha: 1.0
+#   conservative_weight: 5.0
+#   n_action_samples: 10
+#   soft_q_backup: false
+#   use_gpu: true
