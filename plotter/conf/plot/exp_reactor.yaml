@@ -1,0 +1,50 @@
+# @package _global_.plot
+
+# 绘图类型
+plot_type: experiment_reactor
+
+# 实验目录列表
+experiment_dirs:
+  - "./d3rlpy_logs/sacif_env-reactorenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_try_cql-sacif-mix50-rand_seed-*"
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/d3rlpy_logs/sac_env-reactorenv_reward-dense_type-online_only_explorer-off_critic-norm-on_rate0_seed-*"
+
+# 文件名
+filename: evaluation.csv
+
+# 图表标题和轴标签
+title: "Reactor Environment Comparison"
+xlabel: "Epoch"
+ylabel: "Evaluation Return"
+
+# 图表范围
+ylim: [-100, 1]
+
+# 显示数据范围区域
+show_range: true
+
+# 颜色和标签
+colors:
+  - red
+  - blue
+
+labels:
+  - "reactor+offline"
+  - "reactor+offline"
+
+# 离线值点 (可选)
+offline_value: ${data.offline_value}
+offline_marker: "*"
+offline_marker_size: 10
+offline_marker_color: "black"
+offline_label: "offline(CQL)"
+
+# 基准线值 (可选，这里不显示)
+show_baseline: false
+
+# 渲染模式和保存路径
+render_mode: ${output.render_mode}
+save_path: ${output.save_path}
+dpi: ${output.dpi}
+
+# 是否显示图例
+legend: true

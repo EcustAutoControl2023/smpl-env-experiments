@@ -1,0 +1,49 @@
+# @package _global_.plot
+
+# 绘图类型
+plot_type: learning_curve
+
+# 实验目录列表 (使用命令行覆盖: "plot.experiment_dirs=[path1,path2,path3]")
+experiment_dirs:
+  - ${data.base_dir}/experiment1
+  - ${data.base_dir}/experiment2
+  - ${data.base_dir}/experiment3
+
+# 文件名
+filename: evaluation.csv
+
+# 移动平均窗口大小
+window_size: 10
+
+# 图表标题和轴标签
+title: "Learning Curves with Moving Average"
+xlabel: "Epoch"
+ylabel: "Evaluation Return"
+
+# 图表范围
+ylim: [-100, 5000]
+
+# 颜色和标签
+colors:
+  - blue
+  - red
+  - green
+  - orange
+  - purple
+  - brown
+
+labels:
+  - "Experiment 1"
+  - "Experiment 2"
+  - "Experiment 3"
+  - "Experiment 4"
+  - "Experiment 5"
+  - "Experiment 6"
+
+# 渲染模式和保存路径
+render_mode: ${output.render_mode}
+save_path: ${output.save_path}
+dpi: ${output.dpi}
+
+# 是否显示图例
+legend: true

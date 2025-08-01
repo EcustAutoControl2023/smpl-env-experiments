@@ -1,0 +1,27 @@
+# 实验配置索引
+
+# 基本绘图配置
+exception_rate: experiments/exception_rate.yaml
+rollout_evaluation: experiments/rollout_evaluation.yaml
+experiment_comparison: experiments/experiment_comparison.yaml
+experiment_reactor: experiments/experiment_reactor.yaml
+experiment_oo: experiments/experiment_oo.yaml
+
+# 专家指导和在线/离线实验对比
+com_expert: experiments/com_expert.yaml
+com_expert_online: experiments/com_expert_online.yaml
+com_offline_online: experiments/com_offline_online.yaml
+
+# 不同比例的专家指导实验
+com_online_offline_rate01: experiments/com_online_offline_rate01.yaml
+com_online_offline_rate03: experiments/com_online_offline_rate03.yaml
+com_online_offline_rate05: experiments/com_online_offline_rate05.yaml
+com_online_offline_rate07: experiments/com_online_offline_rate07.yaml
+
+# 离线/在线方法组合实验
+diff_offline_guiding_online: experiments/diff_offline_guiding_online.yaml
+offline_improvement: experiments/offline_improvement.yaml
+
+# 其他环境实验
+reactor: experiments/reactor.yaml
+mabenv_plot: experiments/mabenv_plot.yaml

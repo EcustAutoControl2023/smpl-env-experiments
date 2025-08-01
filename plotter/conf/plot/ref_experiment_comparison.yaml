@@ -1,0 +1,56 @@
+# @package _global_.plot
+
+# 绘图类型
+plot_type: experiment_comparison
+
+# 实验目录列表 (使用命令行覆盖: "plot.experiment_dirs=[path1,path2,path3]")
+# 支持通配符路径，例如: "/path/to/experiment*" 将匹配所有以 "experiment" 开头的目录
+experiment_dirs:
+  - ${data.base_dir}/experiment1
+  - ${data.base_dir}/experiment2
+  - ${data.base_dir}/experiment3
+
+# 文件名
+filename: evaluation.csv
+
+# 图表标题和轴标签
+title: "Experiment Comparison"
+xlabel: "Epoch"
+ylabel: "Evaluation Return"
+
+# 图表范围
+ylim: [-100, 5000]
+
+# 显示数据范围区域
+show_range: true
+
+# 颜色和标签
+colors:
+  - blue
+  - red
+  - green
+  - orange
+  - purple
+  - brown
+
+labels:
+  - "Experiment 1"
+  - "Experiment 2"
+  - "Experiment 3"
+  - "Experiment 4"
+  - "Experiment 5"
+  - "Experiment 6"
+
+# 基准线值 (可选)
+baseline_value: 3224
+
+# 离线值点 (可选)
+offline_value: 3000
+
+# 渲染模式和保存路径
+render_mode: ${output.render_mode}
+save_path: ${output.save_path}
+dpi: ${output.dpi}
+
+# 是否显示图例
+legend: true
