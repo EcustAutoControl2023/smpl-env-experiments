@@ -1,0 +1,48 @@
+# Configuration for CQL+SACIF on PenSim environment
+# 
+# This experiment uses:
+# - CQL as the offline algorithm
+# - SACIF as the online algorithm
+# - PenSim as the environment
+
+# Set up the configuration composition
+defaults:
+  - algorithm: bear        # Use CQL for offline algorithm
+  - algorithm@online_algo: sacif      # Use SACIF for online algorithm
+  - environment: pensimenv # Use PenSim environment
+  - _self_                # Apply this config last
+
+# Experiment name and parameters
+exp_name: "rate0-bear-sacifpd"
+# exp_length: 1  # Total training steps
+# random_seed_range: 1  # Number of seeds to run
+
+# Algorithm configuration overrides
+model:
+  use_layer_norm: true
+  offline_algo: "bear"  # Use CQL as offline algorithm
+  online_algo: "sacif" # Use SACIF as online algorithm
+  mixing_ratio: 0.5  # Mixing ratio for SACIF
+
+# Expert intervention configuration
+intervention:
+  rate: 0.0
+  length: 3
+
+# Exploration configuration
+exploration:
+  use_explorer: false
+  explorer_epsilon: 0.3
+
+# Policy initialization
+policy_init:
+  offline_init_policy: true
+  use_offline_pretrained_model: true
+  offline_pretrain_model_path: "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/d3rlpy_logs/bear_pensimenv_for_online_0_20250618103623/model_57500.d3"
+
+# Training parameters
+training:
+  offline_pretrain_steps: 1150
+  offline_pretrain_epoch: 1
+  online_steps: 1150
+  online_epoch: 100

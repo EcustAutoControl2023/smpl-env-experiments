@@ -1,0 +1,49 @@
+# Configuration for CQL+SACIF on PenSim environment
+# 
+# This experiment uses:
+# - CQL as the offline algorithm
+# - SACIF as the online algorithm
+# - PenSim as the environment
+
+# Set up the configuration composition
+defaults:
+  - algorithm: cql        # Use CQL for offline algorithm
+  - algorithm@online_algo: sacif      # Use SACIF for online algorithm
+  - environment: pensimenv # Use PenSim environment
+  - _self_                # Apply this config last
+
+# Experiment name and parameters
+exp_name: "test1-rate0_cql-sacifpd-rl_mixmpc"
+exp_length: 100  # Length of the experiment in episodes
+random_seed_range: 10  # Range for random seed selection
+
+# Algorithm configuration overrides
+model:
+  use_layer_norm: true
+  offline_algo: "cql"  # Use CQL as offline algorithm
+  online_algo: "sacif" # Use SACIF as online algorithm
+  mixing_ratio: 0.5  # Mixing ratio for SACIF
+
+# Expert intervention configuration
+intervention:
+  rate: 0.0
+  length: 5
+
+# Exploration configuration
+exploration:
+  use_explorer: false
+  explorer_epsilon: 0.3
+
+# Policy initialization
+policy_init:
+  offline_init_policy: true
+  use_offline_pretrained_model: true
+  offline_pretrain_model_path: "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/d3rlpy_logs/cql_pensimenv_for_online_0_20250724222728/model_1150.d3"
+  offline_dataset_path: "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/pensimMPCTest/offline_datasets/pensimenv/rl/900_normalize=False.pkl"
+
+# Training parameters
+training:
+  offline_pretrain_steps: 1150
+  offline_pretrain_epoch: 1
+  online_steps: 1150
+  online_epoch: 1

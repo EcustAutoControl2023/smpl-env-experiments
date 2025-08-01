@@ -1,0 +1,107 @@
+# @package _global_
+# Base configuration for experiments
+
+# Hydra configuration for module composition
+defaults:
+  - _self_
+  - optional experiment: null  # Can be specified on command line
+
+experiment:
+  # Experiment configuration
+  exp_name: "default_exp"
+  exp_length: 100  # Number of steps for online learning
+  random_seed_range: 10  # Number of seeds to run
+  random_seed: 0  # Initial random seed (will be updated during execution)
+
+  # Environment configuration
+  environment:
+    name: "pensimenv"
+    dense_reward: true
+    normalize: false
+    initial_state_deviation_ratio: 0.05
+    standard_reward_style: "yield"
+
+  # Model configuration
+  model:
+    use_layer_norm: true
+    offline_algo: "cql"
+    online_algo: "sacif"
+
+  # Buffer configuration
+  buffer:
+    method: "Constant" # Linear, Exponential, Constant
+    start: 0.5
+    end: 0.0
+    k: 3 # parameter for exponential and linear buffer, k*T(T -> total steps)
+
+  # Exploration configuration
+  exploration:
+    use_explorer: false
+    explorer_epsilon: 0.3
+
+  # Expert intervention configuration
+  intervention:
+    method: "Linear"  # Linear, Exponential, Constant, ConfidenceBased
+    rate: 0.0
+    length: 3
+    degree_start: 1.0  # Start value for intervention rate
+    degree_end: 0.0    # End value for intervention rate
+    k: 1                # Parameter for intervention rate, k*T (T -> total steps)
+    T: 1
+
+  # Policy initialization
+  policy_init:
+    offline_exp_suffix: "for_online"
+    offline_init_policy: false
+    use_offline_pretrained_model: false
+    offline_pretrain_model_path: "./d3rlpy_logs/CQL_Pensim_for_online_0_20250318212631/model_1150.d3"
+    # yaml none value indicates no offline pretraining
+    offline_dataset_path: null
+
+  # Training parameters
+  training:
+    offline_pretrain_steps: 1150
+    offline_pretrain_epoch: 1
+    online_steps: 1150  # Same as offline_pretrain_steps by default
+    online_epoch: 100   # Same as exp_length by default
+
+  # Output configuration
+  output:
+    save_interval: 50
+
+# Hydra configuration
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}_${hydra.job.name}
+  sweep:
+    dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}_${hydra.job.name}
+    subdir: ${hydra.job.num}
+  job:
+    config:
+      # Resolvers are used to override values in the config at runtime
+      override_dirname:
+        exclude_keys:
+          - hydra
+          - output
+  job_logging:
+    version: 1
+    formatters:
+      simple:
+        # format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format: '%(message)s'
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: simple
+        level: DEBUG
+    root:
+      level: DEBUG
+      handlers: [console, file]
+    loggers:
+      d3rlpy:
+        level: DEBUG
+        handlers: [console, file]
+        propagate: false
+  searchpath:
+    - file://conf
+  verbose: true
