@@ -12,6 +12,7 @@ from tqdm.std import trange
 from typing_extensions import Self
 import numpy as np
 
+
 from d3rlpy.base import (
     LOG,
     D3RLPyLogger,
@@ -358,9 +359,15 @@ class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig], QLearningAlgoProtocol):
 
         error_num = 0
         running_var_q = 0
+        running_var_q_expert = 0
+        running_var_q_init = True
         action = None
 
         for total_step in xrange(1, n_steps + 1):
+            if running_var_q_init:
+                running_var_q = 0.0
+                running_var_q_expert = 0.0
+                running_var_q_init = False
             with logger.measure_time("step"):
                 # timestep in the current epoch
                 timestep = total_step % n_steps_per_epoch
@@ -398,6 +405,31 @@ class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig], QLearningAlgoProtocol):
                                 # if action is None, keep the default intervention degree
                                 pass
                             else:
+                                x = observation.reshape((1,) + observation.shape)
+                                a_expert = expert.guide(self, x, timestep)
+                                # add random noise to action, 10% the base action
+                                # 40% 触发
+                                rate = 0.8
+                                noise_occur = np.random.choice(
+                                    a=[0, 1],
+                                    size=1,
+                                    p=[
+                                        1 - rate,
+                                        rate,
+                                    ],
+                                )
+                                if noise_occur == 0:
+                                    # if noise_occur is 0, keep the default action
+                                    pass
+                                else:
+                                    noise = np.random.normal(
+                                        loc=0.0,
+                                        scale=0.5 * np.abs(a_expert),
+                                        size=a_expert.shape,
+                                    )
+                                    a_expert = a_expert + noise
+
+                                batch_expert = np.expand_dims(a_expert, axis=0)
                                 batch_observation = np.expand_dims(observation, axis=0)
                                 batch_action = np.expand_dims(action, axis=0)
                                 # convert to torch tensor
@@ -408,6 +440,11 @@ class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig], QLearningAlgoProtocol):
                                 )
                                 batch_action = torch.tensor(
                                     batch_action,
+                                    dtype=torch.float32,
+                                    device=self._device,
+                                )
+                                batch_expert = torch.tensor(
+                                    batch_expert,
                                     dtype=torch.float32,
                                     device=self._device,
                                 )
@@ -434,6 +471,40 @@ class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig], QLearningAlgoProtocol):
                                 )
 
                                 logger.add_metric("U_A", u_a.item())
+                                mean_expert, var_expert = (
+                                    self._impl.compute_mean_variance(
+                                        batch_observation, batch_expert
+                                    )
+                                )
+                                # update running EMA of variance
+                                running_var_q_expert = (
+                                    self._config.ema_beta * running_var_q_expert
+                                    + (1 - self._config.ema_beta) * var_expert
+                                    + 1e-8
+                                )
+                                u_a_expert = sqrt(var_expert / running_var_q_expert)
+                                logger.add_metric("U_A_expert", u_a_expert.item())
+
+                                assert isinstance(logger._adapter, FileAdapter), (
+                                    "Logger adapter is not FileAdapter"
+                                )
+                                file_path = (
+                                    logger._adapter._logdir
+                                    + f"/U_A_{n_steps_per_epoch * (total_step // n_steps_per_epoch + 1)}.csv"
+                                )
+                                with open(file_path, "a") as f:
+                                    f.write(f"{timestep},{u_a.item()}\n")
+                                file_path_expert = (
+                                    logger._adapter._logdir
+                                    + f"/U_A_expert_{n_steps_per_epoch * (total_step // n_steps_per_epoch + 1)}.csv"
+                                )
+                                with open(file_path_expert, "a") as f:
+                                    f.write(f"{timestep},{u_a_expert.item()}\n")
+
+                                phi = mean_expert / (mean + 1e-8)
+
+                                # gate function
+
                         else:
                             raise ValueError(
                                 f"Unknown intervention method: {self._config.intervention_method}"
@@ -651,6 +722,8 @@ class SACIF(QLearningAlgoBase[SACIFImpl, SACIFConfig], QLearningAlgoProtocol):
                 observation, _ = env.reset()
                 logger.add_metric("error_occurred", error_num)
                 error_num = 0
+                # reset running var
+                # running_var_q_init = True
 
         # clip the last episode
         buffer.clip_episode(False)
