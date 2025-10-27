@@ -1,0 +1,39 @@
+buffer:
+  end: 1.0
+  k: 1
+  method: Constant
+  start: 1.0
+defaults:
+- algorithm: cql
+- algorithm@online_algo: sacif
+- environment: pensimenv
+- _self_
+exp_name: rate0_cql-sacifpd_buffer_linears100e100k1_rate0l0_Linears100e0T1
+exploration:
+  explorer_epsilon: 0.3
+  use_explorer: false
+intervention:
+  T: 1
+  degree_end: 0.0
+  degree_start: 1.0
+  k: 5
+  length: 0
+  method: Linear
+  rate: 0.0
+model:
+  offline_algo: cql
+  online_algo: sacif
+  use_layer_norm: true
+policy_init:
+  offline_dataset_path: /home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/offline_datasets/pensimenv/900_normalize=False.pkl
+  offline_exp_suffix: with_gpei_data
+  offline_init_policy: true
+  offline_pretrain_model_path: /home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/d3rlpy_logs/CQL_Pensim_for_online_0_20250318212631/model_1150.d3
+  use_offline_pretrained_model: true
+random_seed: 3
+random_seed_range: 10
+training:
+  offline_pretrain_epoch: 100
+  offline_pretrain_steps: 1150
+  online_epoch: 100
+  online_steps: 1150
