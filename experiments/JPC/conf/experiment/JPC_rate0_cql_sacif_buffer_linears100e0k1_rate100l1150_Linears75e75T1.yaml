@@ -1,0 +1,58 @@
+# Configuration for CQL+SACIF on PenSim environment
+# 
+# This experiment uses:
+# - CQL as the offline algorithm
+# - SACIF as the online algorithm
+# - PenSim as the environment
+
+# Set up the configuration composition
+defaults:
+  - algorithm: cql        # Use CQL for offline algorithm
+  - algorithm@online_algo: sacif      # Use SACIF for online algorithm
+  - environment: pensimenv # Use PenSim environment
+  - _self_                # Apply this config last
+
+# Experiment name and parameters
+exp_name: "rate0_cql-sacifpd_buffer_linears100e0k1_rate100l1150_Linears75e75T1"
+
+# Algorithm configuration overrides
+model:
+  use_layer_norm: true
+  offline_algo: "cql"  # Use CQL as offline algorithm
+  online_algo: "sacif" # Use SACIF as online algorithm
+
+buffer:
+  method: "Linear"  # Use constant buffer method
+  start: 1.0            # Lambda parameter for buffer
+  end: 0.0            # End value for buffer
+  k: 1                # Parameter for buffer size, k*T (T -> total steps)
+
+# Expert intervention configuration
+intervention:
+  method: "Linear"  # Use linear intervention method
+  rate: 1.0          # Rate of expert intervention
+  length: 1150
+  degree_start: 0.75  # Start value for intervention rate
+  degree_end: 0.75    # End value for intervention rate
+  k: 5                # Parameter for intervention rate, k*T (T -> total steps)
+  T: 1
+
+# Exploration configuration
+exploration:
+  use_explorer: false
+  explorer_epsilon: 0.3
+
+# Policy initialization
+policy_init:
+  offline_exp_suffix: "with_gpei_data"
+  offline_init_policy: true
+  use_offline_pretrained_model: true
+  offline_pretrain_model_path: "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/d3rlpy_logs/CQL_Pensim_for_online_0_20250318212631/model_1150.d3"
+  offline_dataset_path: "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/offline_datasets/pensimenv/900_normalize=False.pkl"
+
+# Training parameters
+training:
+  offline_pretrain_steps: 1150
+  offline_pretrain_epoch: 100
+  online_steps: 1150
+  online_epoch: 100
