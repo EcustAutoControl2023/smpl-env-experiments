@@ -1,0 +1,56 @@
+# @package _global_.plot
+
+# 绘图类型
+plot_type: bar_plot
+
+# 实验目录配置
+experiment_dirs:
+  - "experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_bear_sacif_buffer_linears0e0k1_rate0l0_Linears0e0T1_seed-*"
+  - "experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_bear_sacif_buffer_linears75e25k1_rate0l0_Linears0e0T1_seed-*"
+
+# 组标签（用于柱状图的x轴标签）
+group_labels:
+  - "SACIF (s0e0k1)"
+  - "SACIF (s75e25k1)"
+
+# 数据文件配置
+performance_filename: "evaluation.csv"
+error_filename: "error_occurred.csv"
+
+# 指标名称配置
+metric_names:
+  - "Performance (Last 20%)"
+  - "Total Errors"
+
+performance_metric_name: "Performance (Last 20%)"
+error_metric_name: "Total Errors"
+
+# 柱状图样式配置
+colors:
+  - "#4CAF50" # 绿色 - 性能指标
+  - "#F44336" # 红色 - 错误指标
+
+bar_width: 0.35
+show_values: true
+
+# 图表标题和轴标签
+title: "Algorithm Performance and Error Comparison"
+xlabel: "Algorithm Configuration"
+ylabel: "Normalized Values"
+xlabel_rotation: 0
+
+# 图表尺寸和范围
+figsize: [12, 8]
+# ylim: [0, 5000]  # 根据实际数据调整
+
+# 渲染模式和保存路径
+render_mode: "plot"
+save_path: "experiments/JPC/figures"
+save_name: "JPC_bar_comparison"
+dpi: 300
+
+# 是否显示图例
+legend: true
+
+# 是否显示网格
+grid: true

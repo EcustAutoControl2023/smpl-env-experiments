@@ -1,0 +1,45 @@
+# @package _global_.plot
+
+# 绘图类型
+plot_type: error_count
+
+# 实验目录 (使用命令行覆盖: "plot.experiment_dir=path/to/experiment")
+experiment_dirs:
+  - "${data.base_dir}/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_cql-sacifpd_buffer_linears25e0k1_rate0l0_Linears100e0T1_seed-*"
+  - "${data.base_dir}/SACIF_env-pensimenv_reward-dense_type-online_only_explorer-off_critic-norm-on_rate0_error_code_seed-*"
+
+# 文件名
+filenames:
+  - error_occurred.csv
+
+# 批量大小
+batch_size: 100
+
+# 基准线值 (可选)
+baseline_value: 15
+baseline_label: "15 cumulative exceptions"
+
+# 图表标题和轴标签
+title: ""
+xlabel: "Test Epochs"
+ylabel: "Cumulative exception count"
+
+# 颜色和标签
+colors:
+  - red
+  - blue
+
+labels:
+  - "Ours"
+  - "Online (SAC)"
+
+# 渲染模式和保存路径
+# render_mode: ${output.render_mode}
+render_mode: png
+save_name: JPC_figure_sa_cql_sacif_Linear_s25_e0_k1_error_count
+# save_path: ${output.save_path}
+save_path: experiments/JPC/figures
+dpi: ${output.dpi}
+
+# 是否显示图例
+legend: true

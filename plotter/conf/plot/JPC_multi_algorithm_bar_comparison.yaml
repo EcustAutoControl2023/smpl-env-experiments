@@ -1,0 +1,80 @@
+# @package _global_.plot
+
+# 绘图类型
+plot_type: bar_plot
+
+# 实验目录配置 - 支持多个算法
+experiment_dirs:
+  # SACIF 算法组
+  - "experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_bear_sacif_buffer_linears0e0k1_rate0l0_Linears0e0T1_seed-*"
+  - "experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_bear_sacif_buffer_linears75e25k1_rate0l0_Linears0e0T1_seed-*"
+
+  # CRR 算法组 (可根据实际路径调整)
+  - "experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_crr_sacif_buffer_linears0e0k1_rate0l0_Linears0e0T1_seed-*"
+  - "experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_crr_sacif_buffer_linears75e25k1_rate0l0_Linears0e0T1_seed-*"
+
+  # CALQL 算法组 (可根据实际路径调整)
+  - "experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_calql_sacif_buffer_linears0e0k1_rate0l0_Linears0e0T1_seed-*"
+  - "experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_calql_sacif_buffer_linears75e25k1_rate0l0_Linears0e0T1_seed-*"
+
+# 组标签（用于柱状图的x轴标签）
+group_labels:
+  - "BEAR+SAC (s0e0)"
+  - "BEAR+SAC (s75e25k1)"
+  - "CRR+SAC (s0e0)"
+  - "CRR+SAC (s75e25)"
+  - "CALQL+SAC (s0e0)"
+  - "CALQL+SAC (s75e25)"
+
+# 数据文件配置
+performance_filename: "evaluation.csv"
+error_filename: "error_occurred.csv"
+
+# 指标名称配置
+metric_names:
+  - "Performance (Last 20%)"
+  - "Total Errors"
+
+performance_metric_name: "Performance (Last 20%)"
+error_metric_name: "Total Errors"
+
+# 柱状图样式配置
+colors:
+  - "#2E7D32" # 深绿色 - 性能指标
+  - "#D32F2F" # 深红色 - 错误指标
+
+bar_width: 0.8
+show_values: true
+group_by_metric: true
+group_spacing: 1.5
+
+# 图表标题和轴标签
+title: ""
+xlabel: "Metrics and Algorithm Configurations"
+ylabel: "Values"
+xlabel_rotation: 45 # 旋转x轴标签以避免重叠
+
+# 图表尺寸和范围
+figsize: [18, 8]
+# ylim: [0, 5000]  # 根据实际数据范围调整
+
+# 渲染模式和保存路径
+render_mode: "png"
+save_path: "experiments/JPC/figures"
+save_name: "JPC_multi_algorithm_bar_comparison_grouped"
+dpi: 300
+
+# 是否显示图例
+legend: true
+
+# 是否显示网格
+grid: true
+
+# 字体大小配置
+font_size: 12
+title_font_size: 16
+label_font_size: 12
+legend_font_size: 10
+
+# 图表边距调整
+tight_layout: true

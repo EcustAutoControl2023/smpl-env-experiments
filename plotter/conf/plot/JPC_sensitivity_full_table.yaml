@@ -1,0 +1,45 @@
+# Configuration for generating full parameter sensitivity analysis table
+plot_type: plot_sensitivity_summary
+
+# Data source configuration
+base_dir: "data/JPC"
+pattern: "linear*"
+file_pattern: "evaluation.csv"
+error_file: "error_occurred.csv"
+
+# Analysis parameters
+metric: "combined_score"
+group_by: ["lambda_0", "lambda_T"]
+fixed_param_sets:
+  - eps_0: 1.0
+    eps_T: 0.0
+  - eps_0: 1.0
+    eps_T: 0.5
+  - eps_0: 0.5
+    eps_T: 0.5
+
+# Output configuration
+save_latex: true
+save_full_latex: true
+save_csv: true
+save_full_csv: true
+
+# File outputs
+latex_output: "plots/JPC_sensitivity_summary.tex"
+full_latex_output: "plots/JPC_sensitivity_full_table.tex"
+csv_output: "plots/JPC_sensitivity_summary.csv"
+full_csv_output: "plots/JPC_sensitivity_full_results.csv"
+
+# LaTeX formatting options
+latex_caption: "JPC Sensitivity Analysis: Complete Parameter Results"
+latex_label: "tab:jpc_sensitivity_full"
+
+# Evaluation parameters
+eval_freq: 1000
+n_episodes: 100
+
+# Scoring weights
+weight_auc: 0.3
+weight_final: 0.3
+weight_speed: 0.2
+weight_stability: 0.2

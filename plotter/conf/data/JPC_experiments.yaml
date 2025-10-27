@@ -1,0 +1,65 @@
+# Data configuration for JPC experiments
+
+# Base directory for all JPC experiment results
+base_dir: "experiments/JPC/d3rlpy_logs"
+
+# Common experiment patterns
+patterns:
+  # Linear schedule experiments
+  linear_experiments: "sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_cql-sacifpd_buffer_linears*e*k*_rate0l0_Linears100e0T1_seed-*"
+
+  # Constant schedule experiments
+  constant_experiments: "sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_cql-sacifpd_buffer_constant*_seed-*"
+
+  # Exponential schedule experiments
+  exponential_experiments: "sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_cql-sacifpd_buffer_expk*_seed-*"
+
+  # Online only experiments (baseline)
+  online_experiments: "SACIF_env-pensimenv_reward-dense_type-online_only_explorer-off_critic-norm-on_rate0_error_code_seed-*"
+
+# Data file names
+files:
+  evaluation: "evaluation.csv"
+  errors: "error_occurred.csv"
+
+# Experiment parameters
+parameter_ranges:
+  # Linear schedule parameters (s, e, k)
+  s_values: [0, 25, 50, 75, 100]      # Start parameter (lambda_0 * 100)
+  e_values: [0, 25, 50, 75, 100]      # End parameter (lambda_T * 100)
+  k_values: [1, 3, 5]                 # K parameter (eps_0)
+
+  # Seed range
+  seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+# Evaluation settings
+evaluation:
+  freq: 1150                          # Steps between evaluations
+  episodes_per_eval: 1                # Episodes per evaluation
+  total_episodes: 100                 # Total episodes in experiment
+
+# Parameter mapping
+# Maps directory name patterns to parameter values
+param_extraction:
+  # Regex pattern: linears{s}e{e}k{k}
+  linear_pattern: "linears(\\d+)e(\\d+)k(\\d+)"
+
+  # Regex pattern: constant{value}
+  constant_pattern: "constant(\\d+)"
+
+  # Regex pattern: expk{k}
+  exponential_pattern: "expk(\\d+)"
+
+  # Regex pattern: seed-{seed}
+  seed_pattern: "seed-(\\d+)"
+
+# Normalization settings
+normalization:
+  # Convert s,e parameters to [0,1] range
+  s_normalize: true
+  s_factor: 100.0
+  e_normalize: true
+  e_factor: 100.0
+
+  # Keep k parameter as integer
+  k_normalize: false

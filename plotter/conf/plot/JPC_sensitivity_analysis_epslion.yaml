@@ -1,0 +1,90 @@
+# @package _global_.plot
+
+# 绘图类型 - 实验敏感性分析
+plot_type: experimental_sensitivity_analysis
+
+# 实验数据基础目录
+base_dir: "experiments/JPC/d3rlpy_logs"
+
+# 匹配模式 - 匹配所有linear parameter experiments
+pattern: "sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_cql-sacifpd_buffer_linears*e*k*_rate0l0_Linears100e0T1_seed-*"
+
+# 分析类型
+analysis_types:
+  - "heatmap" # 参数敏感性热力图
+  # - "summary" # 汇总统计表格
+  # - "statistics" # 参数效应统计分析
+
+# 热力图配置
+metric: "M" # 主要评价指标
+param1: "epsilon_start" # X轴参数 (s parameter / 100)
+param2: "epsilon_end" # Y轴参数 (e parameter / 100)
+fixed_params: # 固定参数
+  eps_0: 1 # 固定k参数为1
+
+# 热力图样式
+annotate: true # 在热力图单元格中显示数值
+format: ".3f" # 数值格式
+colormap: "viridis" # 颜色映射
+
+# 图表标题和轴标签
+title: ""
+xlabel: "λ start value"
+ylabel: "λ end value"
+
+# 汇总表格配置
+group_by: ["lambda_0", "lambda_T"] # 按这些参数分组
+fixed_param_sets: # 不同固定参数组合
+  - eps_0: 1 # k=1的情况
+
+# 输出配置
+save_heatmap: true
+heatmap_output: "${output.save_path}/JPC_sensitivity_heatmap_linear_k1.pdf"
+save_summary: true
+summary_csv: "${output.save_path}/JPC_sensitivity_summary_linear_k1.csv"
+save_latex: true
+latex_output: "${output.save_path}/JPC_sensitivity_summary_linear_k1.tex"
+
+# 评价频率设置 (用于指标计算)
+eval_freq: 1150 # 根据你的evaluation.csv中的steps间隔
+
+# 渲染设置
+show_plot: false # 是否显示图表
+dpi: 300 # 图像分辨率
+
+# 可选: 多k值对比配置 (如果需要对比不同k值)
+# multi_k_analysis:
+#   k_values: [1, 3, 5]
+#   patterns:
+#     - "sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_cql-sacifpd_buffer_linears*e*k1_rate0l0_Linears100e0T1_seed-*"
+#     - "sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_cql-sacifpd_buffer_linears*e*k3_rate0l0_Linears100e0T1_seed-*"
+#     - "sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_cql-sacifpd_buffer_linears*e*k5_rate0l0_Linears100e0T1_seed-*"
+
+# 高级分析配置
+advanced_analysis:
+  # ANOVA分析
+  run_anova: true
+  significance_level: 0.05
+
+  # 参数交互效应分析
+  interaction_analysis: true
+
+  # 鲁棒性分析 (基于多个seeds的方差)
+  robustness_analysis: true
+
+  # 帕累托前沿分析 (多目标优化视角)
+  pareto_analysis:
+    objectives: ["final_return", "final_error"]
+    maximize: [true, false] # return最大化, error最小化
+
+# 数据过滤配置
+data_filters:
+  # 排除异常值 (可选)
+  exclude_outliers: true
+  outlier_threshold: 3.0 # 标准差倍数
+
+  # 最小seeds数量要求
+  min_seeds_per_config: 3
+
+  # 最小episodes数量要求
+  min_episodes: 50

@@ -5,7 +5,7 @@ plot_type: dual_data_plot
 
 # 预先数据部分（从原点开始绘制）
 pre_experiment_dirs:
-  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/experiments/JPC/d3rlpy_logs/crr_pensimenv_with_gpei_data_plot_*"
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/experiments/JPC/d3rlpy_logs/cql_pensimenv_with_gpei_data_plot_*"
 
 pre_filename: "environment.csv"
 
@@ -18,7 +18,7 @@ pre_labels:
 # 主要数据部分
 experiment_dirs:
   # Ours
-  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0-crr-sacifpd-buffer_linears100e0k1_seed-*"
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_cql-sacifpd_buffer_linears75e0k1_rate0l0_Linears100e0T1_seed-*"
   - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/d3rlpy_logs/SACIF_env-pensimenv_reward-dense_type-online_only_explorer-off_critic-norm-on_rate0_error_code_seed-*"
   - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/test/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-online_only_explorer-off_critic-norm-on_rate0_cql-sacifpd_seed-*"
 
@@ -69,7 +69,7 @@ offline_label: "Ours Starting Point"
 # 渲染模式和保存路径
 render_mode: "png"
 save_path: "experiments/JPC/figures"
-save_name: "JPC_figure_crr_sacif_Linear_s100_e0_k1"
+save_name: "JPC_figure5_cql_sacif_Linear_s75_e0_k1"
 dpi: 300
 
 # 是否显示图例
