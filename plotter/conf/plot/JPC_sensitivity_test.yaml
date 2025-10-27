@@ -1,0 +1,58 @@
+# @package _global_.plot
+
+# 绘图类型 - 实验敏感性分析测试
+plot_type: experimental_sensitivity_analysis
+
+# 实验数据基础目录
+base_dir: "${data.base_dir}"
+
+# 匹配模式 - 测试用，匹配特定的linear experiments
+pattern: "sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_rate0_cql-sacifpd_buffer_linears*e*k1_rate0l0_Linears100e0T1_seed-*"
+
+# 分析类型
+analysis_types:
+  - "heatmap"
+  - "summary"
+  - "statistics"
+
+# 热力图配置
+metric: "combined_score"
+param1: "lambda_0"
+param2: "lambda_T"
+fixed_params:
+  eps_0: 1
+
+# 热力图样式
+annotate: true
+format: ".3f"
+colormap: "viridis"
+
+# 图表标题和轴标签
+title: "Linear Schedule Sensitivity Analysis (Test)"
+xlabel: "Start Parameter (s/100)"
+ylabel: "End Parameter (e/100)"
+
+# 汇总表格配置
+group_by: ["lambda_0", "lambda_T"]
+fixed_param_sets:
+  - eps_0: 1
+
+# 输出配置
+save_heatmap: true
+heatmap_output: "test_sensitivity_heatmap.pdf"
+save_summary: true
+summary_csv: "test_sensitivity_summary.csv"
+save_latex: false
+
+# 评价频率设置
+eval_freq: 1150
+
+# 渲染设置
+show_plot: false
+dpi: 300
+
+# 数据过滤配置
+data_filters:
+  exclude_outliers: false
+  min_seeds_per_config: 1
+  min_episodes: 10

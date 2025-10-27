@@ -1,0 +1,82 @@
+# @package _global_.plot
+
+# 绘图类型
+plot_type: bar_plot
+
+# 实验目录配置 - 支持多个算法
+experiment_dirs:
+  # BEAR+SAC 算法组
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_bear_sacif_buffer_linears0e0k1_rate0l0_Linears0e0T1_with_right_model_seed-*"
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_bear_sacif_buffer_linears75e25k1_rate0l0_Linears0e0T1_with_right_model_seed-*"
+
+  # CRR+SAC 算法组
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_crr_sacif_buffer_linears0e0k1_rate0l0_Linears0e0T1_with_right_model_seed-*"
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_crr_sacif_buffer_linears75e25k1_rate0l0_Linears0e0T1_with_right_model_seed-*"
+
+  # CALQL+SAC 算法组
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_calql_sacif_buffer_linears0e0k1_rate0l0_Linears0e0T1_with_right_model_seed-*"
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_calql_sacif_buffer_linears75e25k1_rate0l0_Linears0e0T1_with_right_model_seed-*"
+
+  # # CQL+SAC 算法组
+  # - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_bear_sacif_buffer_linears0e0k1_rate0l0_Linears0e0T1_seed-*"
+  # - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_bear_sacif_buffer_linears75e25k1_rate0l0_Linears0e0T1_seed-*"
+
+# 组标签（算法名 + 配置）
+group_labels:
+  - "BEAR+SAC (standard method)"
+  - "BEAR+SAC (with our method)"
+  - "CRR+SAC (standard method)"
+  - "CRR+SAC (with our method)"
+  - "CALQL+SAC (standard method)"
+  - "CALQL+SAC (with our method)"
+  # - "CQL+SAC (standard method)"
+  # - "CQL+SAC (with our method)"
+
+# 数据文件配置
+performance_filename: "evaluation.csv"
+error_filename: "error_occurred.csv"
+
+use_percentage: true
+# 指标名称配置
+metric_names:
+  - "Performance (Last 20%)"
+  # - "Total Errors"
+
+performance_metric_name: "Performance (Last 20%)"
+error_metric_name: "Total Errors"
+
+# 分组模式配置
+side_by_side: true
+
+# 配置颜色映射
+config_colors:
+  "standard method": "#1f77b4" # 蓝色 - s0e0配置
+  "with our method": "#ff7f0e" # 橙色 - s75e25配置
+
+# 柱状图样式配置
+bar_width: 0.35
+show_values: true
+
+# 图表标题和轴标签
+title: ""
+xlabel: ""
+ylabel: ""
+xlabel_rotation: 0
+
+# 图表尺寸和范围
+figsize: [6, 6]
+
+# 渲染模式和保存路径
+render_mode: "plot"
+save_path: "experiments/JPC/figures"
+save_name: "JPC_side_by_side_comparison_performance"
+dpi: 300
+
+# 是否显示图例
+legend: false
+
+# 是否显示网格
+grid: true
+
+# 图表边距调整
+tight_layout: true

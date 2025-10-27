@@ -1,0 +1,67 @@
+# @package _global_.plot
+
+# 绘图类型
+plot_type: bar_plot
+
+# 实验目录配置
+experiment_dirs:
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_bear_sacif_buffer_linears0e0k1_rate0l0_Linears0e0T1_seed-*"
+  - "/home/masa/prj/Ecust/paper-rl-batch/smpl-env-experiments-new-ver/experiments/JPC/d3rlpy_logs/sacif_env-pensimenv_reward-dense_type-offline_guide_online_explorer-off_critic-norm-on_JPC_bear_sacif_buffer_linears75e25k1_rate0l0_Linears0e0T1_seed-*"
+
+# 组标签（用于柱状图的x轴标签）
+group_labels:
+  - "SACIF (s0e0k1)"
+  - "SACIF (s75e25k1)"
+
+# 数据文件配置
+performance_filename: "evaluation.csv"
+error_filename: "error_count.csv"
+
+# 指标名称配置
+metric_names:
+  - "Performance (Last 20%)"
+  - "Total Errors"
+
+performance_metric_name: "Performance (Last 20%)"
+error_metric_name: "Total Errors"
+
+# 启用百分比模式
+use_percentage: true
+
+# 柱状图样式配置
+colors:
+  - "#4CAF50"  # 绿色 - 性能指标
+  - "#F44336"  # 红色 - 错误指标
+
+bar_width: 0.35
+show_values: true
+
+# 图表标题和轴标签
+title: "SACIF Algorithm Comparison: Performance vs Errors (Percentage)"
+xlabel: "Algorithm Configuration"
+ylabel: "Percentage (%)"
+xlabel_rotation: 0
+
+# 图表尺寸和范围
+figsize: [10, 6]
+
+# 渲染模式和保存路径
+render_mode: "png"
+save_path: "experiments/JPC/figures"
+save_name: "JPC_sacif_bar_comparison_percentage"
+dpi: 300
+
+# 是否显示图例
+legend: true
+
+# 是否显示网格
+grid: false
+
+# 字体大小配置
+font_size: 12
+title_font_size: 14
+label_font_size: 12
+legend_font_size: 10
+
+# 图表边距调整
+tight_layout: true

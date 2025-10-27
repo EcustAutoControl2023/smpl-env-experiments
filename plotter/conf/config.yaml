@@ -5,13 +5,16 @@ debug: false
 
 # 默认绘图配置
 defaults:
-  - plot: experiment_comparison
   - _self_
+  - plot: experiment_comparison
+
+plot:
+  experiments_number: 10
 
 # 全局样式设置
 style:
   figsize: [10, 6]
-  font_size: 12
+  font_size: 20
   style: "seaborn-v0_8-whitegrid"
 
 # 图表输出设置
@@ -22,5 +25,5 @@ output:
 
 # 实验目录和数据设置
 data:
-  base_dir: "./test/d3rlpy_logs/"
+  base_dir: "./experiments/JPC/d3rlpy_logs/"
   offline_value: 3000 # 离线学习的默认返回值
