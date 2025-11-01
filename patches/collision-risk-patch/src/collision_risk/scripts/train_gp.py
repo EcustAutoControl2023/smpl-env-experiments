@@ -100,12 +100,21 @@ def build_training_matrix(
     history: int,
     include_actions: bool,
     horizon: int,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Construct feature/target arrays for GP fitting."""
+    max_samples: int | None = None,
+    seed: int | None = None,
+) -> Tuple[np.ndarray, np.ndarray, int, int]:
+    """Construct feature/target arrays for GP fitting.
+
+    Returns the stacked features/targets along with counters indicating the
+    total number of candidate samples seen and the number retained after any
+    subsampling.
+    """
 
     window = TrajectoryWindow(window_size=history, include_actions=include_actions)
     features: list[np.ndarray] = []
     targets: list[float] = []
+    rng = np.random.default_rng(seed) if max_samples is not None else None
+    total_samples = 0
     collision_targets = _future_collision_targets(terminals.astype(bool), horizon)
 
     for start, end in _iter_episode_indices(terminals.astype(bool)):
@@ -115,13 +124,23 @@ def build_training_matrix(
             feature = window.as_feature_vector()
             if feature.size == 0:
                 continue
-            features.append(feature)
-            targets.append(collision_targets[idx])
+            total_samples += 1
+            if max_samples is None or len(features) < max_samples:
+                features.append(feature)
+                targets.append(collision_targets[idx])
+            else:
+                assert rng is not None
+                replacement_index = int(rng.integers(0, total_samples))
+                if replacement_index < max_samples:
+                    features[replacement_index] = feature
+                    targets[replacement_index] = collision_targets[idx]
 
     if not features:
         raise RuntimeError("No training samples were generated from the dataset.")
 
-    return np.stack(features), np.asarray(targets, dtype=float)
+    X = np.stack(features)
+    y = np.asarray(targets, dtype=float)
+    return X, y, total_samples, len(features)
 
 
 def fit_gaussian_process(
@@ -189,17 +208,39 @@ def main() -> None:
         default=1e-3,
         help="Noise level for the WhiteKernel component.",
     )
+    parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=20000,
+        help=(
+            "Upper bound on the number of training samples retained via reservoir "
+            "sampling. Set to 0 to keep all samples."
+        ),
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Random seed used for subsampling when --max-samples is set.",
+    )
     args = parser.parse_args()
 
     observations, actions, terminals = _load_dataset(args.dataset)
-    X, y = build_training_matrix(
+    max_cap = max(args.max_samples, 0)
+    max_samples = None if max_cap == 0 else max_cap
+    X, y, total_samples, retained_samples = build_training_matrix(
         observations,
         actions,
         terminals,
         history=args.history,
         include_actions=args.include_actions,
         horizon=args.horizon,
+        max_samples=max_samples,
+        seed=args.seed,
     )
+    # Ensure metadata records the effective sampling cap used during training.
+    args.max_samples = int(max_cap)
+
     gp = fit_gaussian_process(
         X,
         y,
@@ -211,7 +252,8 @@ def main() -> None:
     joblib.dump({"model": gp, "metadata": vars(args)}, args.output)
 
     summary = {
-        "samples": int(len(y)),
+        "samples_total": int(total_samples),
+        "samples_retained": int(retained_samples),
         "features": int(X.shape[1]),
         "positive_fraction": float(y.mean()),
         "checkpoint": str(args.output),

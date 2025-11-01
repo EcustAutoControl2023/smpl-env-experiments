@@ -29,12 +29,16 @@ Utility package providing reusable collision risk estimation tooling used by the
      --history 8 \
      --include-actions \
      --horizon 25 \
+     --max-samples 15000 \
      --output artifacts/collision_gp.joblib
    ```
 
    The trainer windows each trajectory using the requested ``history`` length
    and labels a step as high-risk when a terminal flag is observed within the
-   next ``horizon`` transitions. Adjust the kernel hyperparameters via
+   next ``horizon`` transitions. By default the command retains up to 20k
+   samples using reservoir sampling to keep the Gaussian-process fit tractable;
+   tune ``--max-samples`` (or set it to ``0`` to keep every timestep) and
+   ``--seed`` to control that subsampling. Adjust the kernel hyperparameters via
    ``--length-scale`` and ``--noise-level`` to tune the Gaussian process.
 
 The resulting ``collision_gp.joblib`` file can then be referenced from the
