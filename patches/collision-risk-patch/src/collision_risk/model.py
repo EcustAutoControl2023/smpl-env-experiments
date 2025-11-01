@@ -62,6 +62,9 @@ class GaussianProcessCollisionModel(CollisionRiskModel):
         if self.gp is None:
             return self._clip(self.default_risk)
         try:
+            scaler = getattr(self.gp, "feature_scaler_", None)
+            if scaler is not None:
+                feature_vector = scaler.transform(feature_vector)
             prediction = float(self.gp.predict(feature_vector, return_std=False)[0])
         except Exception:
             return self._clip(self.default_risk)
