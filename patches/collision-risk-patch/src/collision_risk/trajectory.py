@@ -18,6 +18,8 @@ class TrajectoryWindow:
     include_actions: bool = False
     _observations: Deque[np.ndarray] = field(init=False, repr=False)
     _actions: Deque[np.ndarray] = field(init=False, repr=False)
+    _obs_dim: Optional[int] = field(init=False, default=None, repr=False)
+    _act_dim: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self) -> None:
         self._observations = deque(maxlen=self.window_size)
@@ -28,29 +30,55 @@ class TrajectoryWindow:
         self._actions.clear()
 
     def append(self, observation: ArrayLike, action: Optional[ArrayLike] = None) -> None:
-        self._observations.append(np.asarray(observation, dtype=float))
+        obs_arr = np.asarray(observation, dtype=float).ravel()
+        if self._obs_dim is None:
+            self._obs_dim = obs_arr.size
+        elif obs_arr.size != self._obs_dim:
+            raise ValueError(
+                f"Observation size {obs_arr.size} does not match expected {self._obs_dim}."
+            )
+        self._observations.append(obs_arr)
+
         if self.include_actions and action is not None:
-            self._actions.append(np.asarray(action, dtype=float))
+            act_arr = np.asarray(action, dtype=float).ravel()
+            if self._act_dim is None:
+                self._act_dim = act_arr.size
+            elif act_arr.size != self._act_dim:
+                raise ValueError(
+                    f"Action size {act_arr.size} does not match expected {self._act_dim}."
+                )
+            self._actions.append(act_arr)
 
     def as_feature_vector(self) -> np.ndarray:
-        """Flatten buffered content into a feature vector."""
+        """Flatten buffered content into a fixed-size feature vector."""
 
-        if not self._observations:
-            return np.zeros(self.feature_dim, dtype=float)
-        obs_stack = np.concatenate(list(self._observations))
-        if not self.include_actions or not self._actions:
-            return obs_stack
-        act_stack = np.concatenate(list(self._actions))
-        return np.concatenate([obs_stack, act_stack])
+        if self._obs_dim is None:
+            return np.zeros(0, dtype=float)
+
+        feature = np.zeros(self.feature_dim, dtype=float)
+
+        obs_offset = self.window_size - len(self._observations)
+        for idx, obs in enumerate(self._observations):
+            start = (obs_offset + idx) * self._obs_dim
+            feature[start : start + self._obs_dim] = obs
+
+        if self.include_actions and self._act_dim is not None:
+            base = self.window_size * self._obs_dim
+            act_offset = self.window_size - len(self._actions)
+            for idx, act in enumerate(self._actions):
+                start = base + (act_offset + idx) * self._act_dim
+                feature[start : start + self._act_dim] = act
+
+        return feature
 
     @property
     def feature_dim(self) -> int:
-        obs_dim = self._observations[0].size if self._observations else 0
-        act_dim = self._actions[0].size if self._actions else 0
-        total_dim = obs_dim * len(self._observations)
-        if self.include_actions:
-            total_dim += act_dim * len(self._actions)
-        return total_dim if total_dim > 0 else 0
+        if self._obs_dim is None:
+            return 0
+        total_dim = self.window_size * self._obs_dim
+        if self.include_actions and self._act_dim is not None:
+            total_dim += self.window_size * self._act_dim
+        return total_dim
 
     def snapshot(self) -> Tuple[np.ndarray, np.ndarray]:
         obs = np.stack(self._observations) if self._observations else np.empty((0,))
