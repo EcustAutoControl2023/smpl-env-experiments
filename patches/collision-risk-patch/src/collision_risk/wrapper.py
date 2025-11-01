@@ -89,8 +89,27 @@ else:  # pragma: no cover - Gym not installed
     _GymCollisionRiskObservationWrapper = None  # type: ignore[assignment]
 
 
+class _GenericCollisionRiskObservationWrapper(_CollisionWrapperMixin):
+    """Fallback wrapper that relies on duck typing instead of Gym base classes."""
+
+    def __init__(self, env, *, model: CollisionRiskModel) -> None:
+        self.env = env
+        self.model = model
+        # Propagate common attributes that downstream consumers expect on gym-like envs.
+        for attr in ("action_space", "reward_range", "metadata", "spec"):
+            if hasattr(env, attr):
+                setattr(self, attr, getattr(env, attr))
+        self._configure_observation_space()
+
+    def __getattr__(self, name: str):
+        # Delegate attribute access to the wrapped environment for methods such
+        # as render/close/etc. Using __getattr__ keeps the wrapper minimal while
+        # still behaving like the original environment.
+        return getattr(self.env, name)
+
+
 class CollisionRiskObservationWrapper:
-    """Factory wrapper that supports both Gymnasium and classic Gym envs."""
+    """Factory wrapper that supports Gym, Gymnasium, and generic envs."""
 
     def __new__(cls, env, *, model: CollisionRiskModel):  # noqa: D401 - behaviour described above
         if _gymnasium is not None and isinstance(env, _gymnasium.Env):
@@ -98,11 +117,11 @@ class CollisionRiskObservationWrapper:
         if _gym is not None and isinstance(env, _gym.Env):
             return _GymCollisionRiskObservationWrapper(env, model=model)
 
-        available = [name for name, mod in {"gymnasium": _gymnasium, "gym": _gym}.items() if mod is not None]
-        raise TypeError(
-            "Unsupported environment type for collision risk wrapper. "
-            f"Available integrations: {', '.join(available) if available else 'none'}."
-        )
+        # Fallback to a generic duck-typed wrapper when the environment does not
+        # inherit from gymnasium/gym base classes (or when those optional dependencies
+        # are unavailable). This keeps the risk augmentation functional for custom
+        # environments such as PenSimEnvGym.
+        return _GenericCollisionRiskObservationWrapper(env, model=model)
 
 
 __all__ = ["CollisionRiskObservationWrapper"]
