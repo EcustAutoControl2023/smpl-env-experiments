@@ -184,6 +184,7 @@ def main() -> None:
 
     payload: dict
     metadata = vars(args).copy()
+    metadata["feature_dim"] = int(X.shape[1])
     feature_scaler = None
     if args.backend == "gpytorch":
         if StandardScaler is None:  # pragma: no cover - optional dependency guard

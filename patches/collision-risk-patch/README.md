@@ -69,7 +69,18 @@ Utility package providing reusable collision risk estimation tooling used by the
    linear algebra to the requested ``--device``. Set ``--device`` to ``cpu`` to
    force host-side training when a GPU is unavailable.
 
-The resulting ``collision_gp.joblib`` file can then be referenced from the
+   > **Feature alignment reminder** – The risk predictor expects the same
+   > observation/action history layout during inference as was used at training
+   > time. When ``--include-actions`` is enabled make sure any downstream
+   > augmentation step (such as the replay buffer enrichment in
+   > ``experiments/JPC/utils.py``) provides both the action stream and the
+   > episode terminals so the helper can rebuild identical trajectory windows.
+   > The live environment wrapper follows the same convention by pairing each
+   > returned observation with the action that produced it; the very first
+   > observation after ``reset`` falls back to the configured default risk
+   > because no control input has been issued yet.
+
+   The resulting ``collision_gp.joblib`` file can then be referenced from the
 experiment configuration as described below.
 
 ## Visualising Predictor Performance

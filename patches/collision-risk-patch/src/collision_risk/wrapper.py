@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 
 from .model import CollisionRiskModel
+from .trajectory import TrajectoryWindow
 
 try:  # pragma: no cover - soft dependency for Gymnasium
     import gymnasium as _gymnasium
@@ -23,6 +24,7 @@ class _CollisionWrapperMixin:
     """Shared logic for risk-aware observation augmentation."""
 
     model: CollisionRiskModel
+    _risk_window: TrajectoryWindow
 
     def _configure_observation_space(self) -> None:
         space = getattr(self.env, "observation_space", None)
@@ -34,13 +36,31 @@ class _CollisionWrapperMixin:
 
         # Recreate a Box using the same class as the wrapped environment to keep dtype semantics.
         self.observation_space = space.__class__(low=low, high=high, dtype=np.float32)
+        self._risk_window = self.model.make_feature_window()
+        self._last_action: Optional[np.ndarray] = None
+
+    def _augment_observation(
+        self,
+        observation: np.ndarray,
+        *,
+        action: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
+        feature = self.model.build_feature_vector(self._risk_window, observation, action)
+        risk = (
+            self.model.predict_risk(feature)
+            if feature.size
+            else self.model._clip(self.model.default_risk)  # type: ignore[attr-defined]
+        )
+        return np.concatenate([np.asarray(observation, dtype=np.float32), [risk]], dtype=np.float32)
 
     # The methods below intentionally avoid super() calls so they work for both Gym and Gymnasium.
     def observation(self, observation: np.ndarray) -> np.ndarray:
-        risk = self.model.predict_risk(observation)
-        return np.concatenate([np.asarray(observation, dtype=np.float32), [risk]])
+        action = self._last_action if self.model.include_actions else None
+        return self._augment_observation(observation, action=action)
 
     def reset(self, **kwargs: Any):  # type: ignore[override]
+        self._risk_window.reset()
+        self._last_action = None
         observation = self.env.reset(**kwargs)
         if isinstance(observation, tuple) and len(observation) == 2:
             obs, info = observation
@@ -52,10 +72,22 @@ class _CollisionWrapperMixin:
         if isinstance(outcome, tuple):
             if len(outcome) == 5:  # Gymnasium API
                 obs, reward, terminated, truncated, info = outcome
-                return self.observation(obs), reward, terminated, truncated, info
+                augmented = self._augment_observation(obs, action=action if self.model.include_actions else None)
+                if terminated or truncated:
+                    self._risk_window.reset()
+                    self._last_action = None
+                else:
+                    self._last_action = action if self.model.include_actions else None
+                return augmented, reward, terminated, truncated, info
             if len(outcome) == 4:  # Legacy Gym API
                 obs, reward, done, info = outcome
-                return self.observation(obs), reward, done, info
+                augmented = self._augment_observation(obs, action=action if self.model.include_actions else None)
+                if done:
+                    self._risk_window.reset()
+                    self._last_action = None
+                else:
+                    self._last_action = action if self.model.include_actions else None
+                return augmented, reward, done, info
         raise TypeError("Unexpected environment step return signature")
 
 

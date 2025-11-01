@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import pickle
 from pathlib import Path
-from typing import Iterable, Tuple
+from typing import Iterable, Optional, Tuple
 
 import numpy as np
 
@@ -88,8 +88,8 @@ def build_training_matrix(
     history: int,
     include_actions: bool,
     horizon: int,
-    max_samples: int | None = None,
-    seed: int | None = None,
+    max_samples: Optional[int] = None,
+    seed: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray, int, int]:
     """Construct feature/target arrays for GP fitting and evaluation."""
 
@@ -145,6 +145,8 @@ def augment_dataset_with_risk(
     observations: np.ndarray,
     *,
     model: CollisionRiskModel,
+    actions: Optional[np.ndarray] = None,
+    terminals: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """Append risk predictions as an additional observation dimension.
 
@@ -154,6 +156,13 @@ def augment_dataset_with_risk(
         Array of shape ``(T, obs_dim)`` containing the base observations.
     model:
         Collision risk estimator used to produce risk predictions.
+    actions:
+        Optional array of shape ``(T, act_dim)`` used when the collision model was
+        trained with action history (``model.include_actions is True``).
+    terminals:
+        Optional boolean array marking the end of each episode. Supplying
+        terminals ensures the internal trajectory window is reset between
+        episodes so features remain aligned with the training configuration.
 
     Returns
     -------
@@ -163,12 +172,41 @@ def augment_dataset_with_risk(
     """
 
     obs = np.asarray(observations, dtype=float)
-    risks = model.batch_predict(obs).astype(float).reshape(-1)
+    if obs.ndim != 2:
+        raise ValueError("Observations must be a 2-D array with shape (T, obs_dim).")
 
-    if risks.size != obs.shape[0]:
-        raise ValueError(
-            "Collision risk predictor returned a mismatched number of samples."
-        )
+    action_array: Optional[np.ndarray] = None
+    if model.include_actions:
+        if actions is None:
+            raise ValueError(
+                "The collision risk model expects action history, but no actions were provided."
+            )
+        action_array = np.asarray(actions, dtype=float)
+        if action_array.shape[0] != obs.shape[0]:
+            raise ValueError("Observation and action arrays must share the same length.")
+    elif actions is not None:
+        action_array = np.asarray(actions, dtype=float)
+
+    terminal_array: np.ndarray
+    if terminals is not None:
+        terminal_array = np.asarray(terminals, dtype=bool)
+        if terminal_array.shape[0] != obs.shape[0]:
+            raise ValueError("Observation and terminal arrays must share the same length.")
+    else:
+        terminal_array = np.zeros(obs.shape[0], dtype=bool)
+
+    window = model.make_feature_window()
+    risks = np.empty(obs.shape[0], dtype=float)
+
+    for start, end in iter_episode_indices(terminal_array):
+        window.reset()
+        for idx in range(start, end):
+            action = action_array[idx] if action_array is not None else None
+            feature = model.build_feature_vector(window, obs[idx], action)
+            if feature.size == 0:
+                risks[idx] = model._clip(model.default_risk)  # type: ignore[attr-defined]
+            else:
+                risks[idx] = model.predict_risk(feature)
 
     finite_mask = np.isfinite(risks)
     if not finite_mask.all():

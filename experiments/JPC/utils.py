@@ -222,7 +222,12 @@ def get_datasets(
     def _to_mdp_dataset(dataset_dict):
         observations = dataset_dict["observations"]
         if risk_model is not None:
-            observations = augment_dataset_with_risk(observations, model=risk_model)
+            observations = augment_dataset_with_risk(
+                observations,
+                model=risk_model,
+                actions=dataset_dict.get("actions"),
+                terminals=dataset_dict.get("terminals"),
+            )
         return d3rlpy.dataset.MDPDataset(
             observations,
             dataset_dict["actions"],
