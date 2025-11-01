@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import pickle
 from pathlib import Path
-from typing import Iterable, Tuple
 
 import joblib
 import numpy as np
@@ -17,11 +15,6 @@ except Exception:  # pragma: no cover
     tqdm = None  # type: ignore[assignment]
 
 try:  # pragma: no cover - optional dependency guard
-    from d3rlpy.dataset import MDPDataset
-except Exception:  # pragma: no cover
-    MDPDataset = None  # type: ignore[misc]
-
-try:  # pragma: no cover - optional dependency guard
     from sklearn.gaussian_process import GaussianProcessRegressor
     from sklearn.gaussian_process.kernels import ConstantKernel, RBF, WhiteKernel
     from sklearn.preprocessing import StandardScaler
@@ -30,137 +23,12 @@ except Exception:  # pragma: no cover
     ConstantKernel = RBF = WhiteKernel = None  # type: ignore[misc]
     StandardScaler = None  # type: ignore[misc]
 
-from ..trajectory import TrajectoryWindow
+from ..dataset import build_training_matrix, load_dataset
 from ..gpytorch_backend import (
     GPyTorchModelBundle,
     ensure_gpytorch_available,
     train_exact_gp,
 )
-
-
-def _load_dataset(path: Path) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Load a dataset supporting the minimal fields required for training."""
-
-    if path.suffix == ".npz":
-        archive = np.load(path)
-        observations = archive["observations"]
-        actions = archive["actions"]
-        terminals = archive.get("terminals", np.zeros(len(observations), dtype=bool))
-        return observations, actions, terminals
-    if path.suffix == ".pkl":
-        with path.open("rb") as fh:
-            payload = pickle.load(fh)
-        if isinstance(payload, dict):
-            observations = np.asarray(payload["observations"])
-            actions = np.asarray(payload["actions"])
-            terminal_key = next(
-                (key for key in ("terminals", "dones", "timeouts") if key in payload),
-                None,
-            )
-            if terminal_key is not None:
-                terminals = np.asarray(payload[terminal_key])
-            else:
-                terminals = np.zeros(len(observations), dtype=bool)
-            return observations, actions, terminals
-        raise ValueError(
-            "Pickle datasets must store a mapping with 'observations' and 'actions' arrays."
-        )
-    if path.suffix in {".h5", ".hdf5"}:
-        if MDPDataset is None:  # pragma: no cover - optional dependency guard
-            raise RuntimeError(
-                "d3rlpy is required to load HDF5 datasets. Install d3rlpy first."
-            )
-        dataset = MDPDataset.load(str(path))
-        return (dataset.observations, dataset.actions, dataset.terminals)
-    raise ValueError(f"Unsupported dataset format: {path.suffix}")
-
-
-def _iter_episode_indices(terminals: np.ndarray) -> Iterable[Tuple[int, int]]:
-    """Yield (start, end) indices for each episode in the flat arrays."""
-
-    start = 0
-    for idx, terminal in enumerate(terminals):
-        if terminal:
-            yield start, idx + 1
-            start = idx + 1
-    if start < len(terminals):
-        yield start, len(terminals)
-
-
-def _future_collision_targets(terminals: np.ndarray, horizon: int) -> np.ndarray:
-    """Label each timestep with whether a collision occurs within the horizon."""
-
-    targets = np.zeros_like(terminals, dtype=float)
-    lookahead = 0
-    for idx in range(len(terminals) - 1, -1, -1):
-        if terminals[idx]:
-            lookahead = horizon
-            targets[idx] = 1.0
-        else:
-            lookahead = max(lookahead - 1, 0)
-            targets[idx] = 1.0 if lookahead > 0 else 0.0
-    return targets
-
-
-def build_training_matrix(
-    observations: np.ndarray,
-    actions: np.ndarray,
-    terminals: np.ndarray,
-    *,
-    history: int,
-    include_actions: bool,
-    horizon: int,
-    max_samples: int | None = None,
-    seed: int | None = None,
-) -> Tuple[np.ndarray, np.ndarray, int, int]:
-    """Construct feature/target arrays for GP fitting.
-
-    Returns the stacked features/targets along with counters indicating the
-    total number of candidate samples seen and the number retained after any
-    subsampling.
-    """
-
-    window = TrajectoryWindow(window_size=history, include_actions=include_actions)
-    features: list[np.ndarray] = []
-    targets: list[float] = []
-    rng = np.random.default_rng(seed) if max_samples is not None else None
-    total_samples = 0
-    collision_targets = _future_collision_targets(terminals.astype(bool), horizon)
-
-    progress = None
-    if tqdm is not None:
-        progress = tqdm(total=int(len(terminals)), desc="Preparing GP dataset", leave=False)
-
-    try:
-        for start, end in _iter_episode_indices(terminals.astype(bool)):
-            window.reset()
-            for idx in range(start, end):
-                if progress is not None:
-                    progress.update(1)
-                window.append(observations[idx], actions[idx] if include_actions else None)
-                feature = window.as_feature_vector()
-                if feature.size == 0:
-                    continue
-                total_samples += 1
-                if max_samples is None or len(features) < max_samples:
-                    features.append(feature)
-                    targets.append(collision_targets[idx])
-                else:
-                    assert rng is not None
-                    replacement_index = int(rng.integers(0, total_samples))
-                    if replacement_index < max_samples:
-                        features[replacement_index] = feature
-                        targets[replacement_index] = collision_targets[idx]
-    finally:
-        if progress is not None:
-            progress.close()
-
-    if not features:
-        raise RuntimeError("No training samples were generated from the dataset.")
-
-    X = np.stack(features)
-    y = np.asarray(targets, dtype=float)
-    return X, y, total_samples, len(features)
 
 
 def fit_gaussian_process(
@@ -198,7 +66,15 @@ def fit_gpytorch_model(
     """Train an exact GP using GPyTorch with optional GPU acceleration."""
 
     ensure_gpytorch_available()
-    return train_exact_gp(X, y, device=device, epochs=epochs, learning_rate=learning_rate)
+    bundle, loss_history = train_exact_gp(
+        X,
+        y,
+        device=device,
+        epochs=epochs,
+        learning_rate=learning_rate,
+    )
+    bundle.training_loss_history = loss_history  # type: ignore[attr-defined]
+    return bundle
 
 
 def main() -> None:
@@ -290,7 +166,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    observations, actions, terminals = _load_dataset(args.dataset)
+    observations, actions, terminals = load_dataset(args.dataset)
     max_cap = max(args.max_samples, 0)
     max_samples = None if max_cap == 0 else max_cap
     X, y, total_samples, retained_samples = build_training_matrix(
@@ -307,6 +183,7 @@ def main() -> None:
     args.max_samples = int(max_cap)
 
     payload: dict
+    metadata = vars(args).copy()
     feature_scaler = None
     if args.backend == "gpytorch":
         if StandardScaler is None:  # pragma: no cover - optional dependency guard
@@ -320,11 +197,14 @@ def main() -> None:
             epochs=args.epochs,
             learning_rate=args.learning_rate,
         )
+        loss_history = getattr(bundle, "training_loss_history", None)
+        if loss_history is not None:
+            metadata["loss_history"] = list(loss_history)
         payload = {
             "backend": "gpytorch",
             "bundle": bundle,
             "feature_scaler": feature_scaler,
-            "metadata": vars(args),
+            "metadata": metadata,
         }
     else:
         if tqdm is not None:
@@ -342,10 +222,12 @@ def main() -> None:
             if progress is not None:
                 progress.update(1)
                 progress.close()
+        if hasattr(gp, "log_marginal_likelihood_value_"):
+            metadata["log_marginal_likelihood"] = float(gp.log_marginal_likelihood_value_)
         payload = {
             "backend": "sklearn",
             "model": gp,
-            "metadata": vars(args),
+            "metadata": metadata,
         }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

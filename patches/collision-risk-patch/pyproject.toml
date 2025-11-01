@@ -9,6 +9,7 @@ dependencies = [
     "scikit-learn",
     "joblib",
     "tqdm",
+    "matplotlib",
 ]
 
 [project.optional-dependencies]

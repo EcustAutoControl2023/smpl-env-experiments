@@ -72,6 +72,33 @@ Utility package providing reusable collision risk estimation tooling used by the
 The resulting ``collision_gp.joblib`` file can then be referenced from the
 experiment configuration as described below.
 
+## Visualising Predictor Performance
+
+After training a checkpoint you can evaluate its behaviour on the penicillin
+dataset (or any compatible offline export) using the bundled visualisation CLI.
+This generates diagnostic plots and a JSON summary under the ``figures``
+directory:
+
+```bash
+uv run python -m collision_risk.scripts.visualize_gp \
+  experiments/JPC/offline_datasets/pensimenv/900_normalize=False.pkl \
+  artifacts/collision_gp.joblib \
+  --output-dir figures \
+  --max-eval-samples 40000 \
+  --learning-curve-points 6
+```
+
+The command produces two figures:
+
+- ``figures/gp_performance_metrics.png`` – ROC and precision-recall curves plus
+  risk histograms to illustrate the predictor's discrimination power.
+- ``figures/gp_convergence.png`` – convergence diagnostics using either the
+  recorded training loss (for the gpytorch backend) or a synthetic learning
+  curve derived from scikit-learn refits on increasing sample sizes.
+
+The accompanying ``figures/gp_performance_summary.json`` file stores the metrics
+that were plotted, making it easy to track GP performance across checkpoints.
+
 ## Usage in Experiments
 
 The risk model is wired into the Hydra configuration that drives

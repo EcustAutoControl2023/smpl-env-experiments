@@ -80,7 +80,7 @@ def train_exact_gp(
     device: str,
     epochs: int,
     learning_rate: float,
-) -> GPyTorchModelBundle:
+) -> tuple[GPyTorchModelBundle, list[float]]:
     """Fit an exact GP model using GPyTorch."""
 
     train_x, train_y = _prepare_training_tensors(features, targets, device=device)
@@ -93,6 +93,7 @@ def train_exact_gp(
     mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
 
     progress = None
+    loss_history: list[float] = []
     if tqdm is not None:
         progress = tqdm(range(max(epochs, 1)), desc="Optimising GP", leave=False)
     else:
@@ -104,6 +105,7 @@ def train_exact_gp(
         loss = -mll(output, train_y)
         loss.backward()
         optimizer.step()
+        loss_history.append(float(loss.detach().cpu()))
         if tqdm is not None:
             progress.set_postfix(loss=float(loss.detach()))  # type: ignore[attr-defined]
 
@@ -118,13 +120,14 @@ def train_exact_gp(
     train_inputs_cpu = model_cpu.train_inputs[0].detach().cpu().numpy().astype(np.float32)
     train_targets_cpu = model_cpu.train_targets.detach().cpu().numpy().astype(np.float32)
 
-    return GPyTorchModelBundle(
+    bundle = GPyTorchModelBundle(
         model_state_dict=model_cpu.state_dict(),
         likelihood_state_dict=likelihood_cpu.state_dict(),
         train_inputs=train_inputs_cpu,
         train_targets=train_targets_cpu,
         feature_dim=train_inputs_cpu.shape[1],
     )
+    return bundle, loss_history
 
 
 def load_model_bundle(bundle: GPyTorchModelBundle) -> tuple["gpytorch.models.ExactGP", "gpytorch.likelihoods.GaussianLikelihood"]:
