@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import pickle
 from pathlib import Path
 from typing import Iterable, Tuple
 
@@ -36,6 +37,24 @@ def _load_dataset(path: Path) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         actions = archive["actions"]
         terminals = archive.get("terminals", np.zeros(len(observations), dtype=bool))
         return observations, actions, terminals
+    if path.suffix == ".pkl":
+        with path.open("rb") as fh:
+            payload = pickle.load(fh)
+        if isinstance(payload, dict):
+            observations = np.asarray(payload["observations"])
+            actions = np.asarray(payload["actions"])
+            terminal_key = next(
+                (key for key in ("terminals", "dones", "timeouts") if key in payload),
+                None,
+            )
+            if terminal_key is not None:
+                terminals = np.asarray(payload[terminal_key])
+            else:
+                terminals = np.zeros(len(observations), dtype=bool)
+            return observations, actions, terminals
+        raise ValueError(
+            "Pickle datasets must store a mapping with 'observations' and 'actions' arrays."
+        )
     if path.suffix in {".h5", ".hdf5"}:
         if MDPDataset is None:  # pragma: no cover - optional dependency guard
             raise RuntimeError(
@@ -130,7 +149,11 @@ def fit_gaussian_process(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train a collision risk GP model.")
-    parser.add_argument("dataset", type=Path, help="Path to an offline dataset (npz or h5)")
+    parser.add_argument(
+        "dataset",
+        type=Path,
+        help="Path to an offline dataset (.npz, .pkl, or .h5)",
+    )
     parser.add_argument(
         "--output",
         type=Path,
