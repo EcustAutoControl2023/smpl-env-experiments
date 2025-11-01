@@ -53,6 +53,17 @@ from d3rlpy_patch.algos.experts import StaticRecipeExpert
 import numpy
 from smpl.envs.pensimenv import NUM_STEPS
 from utils import env_creator, get_datasets, get_recipe
+from collision_risk import load_collision_model
+
+
+@dataclass
+class RiskModelConfig:
+    enabled: bool = False
+    model_path: Optional[str] = None
+    default_risk: float = 0.0
+    clip_min: float = 0.0
+    clip_max: float = 1.0
+    augment_dataset: bool = True
 
 env_name = "pensimenv"
 normalize = False
@@ -102,20 +113,38 @@ def get_pensim_env(opts: dict):
     # Create a local copy of env_config to avoid modifying the global version
     local_env_config = env_config.copy()
     local_env_config.update(opts)
+    risk_opts = (
+        local_env_config.pop("risk", {})
+        if "risk" in local_env_config
+        else opts.get("risk", {})
+    )
+    risk_enabled = risk_opts.get("enabled", False)
+    risk_model = None
+    if risk_enabled:
+        risk_model = load_collision_model(
+            risk_opts.get("model_path"),
+            default_risk=risk_opts.get("default_risk", 0.0),
+            clip=(risk_opts.get("clip_min", 0.0), risk_opts.get("clip_max", 1.0)),
+        )
 
     d3rlpy.seed(local_env_config["random_seed"])
     numpy.random.seed(local_env_config["random_seed"])
 
-    env = env_creator(local_env_config)
+    env = env_creator(
+        local_env_config, risk_model=risk_model if risk_enabled else None
+    )
 
     # Create a new seed for eval environment
     eval_env_config = local_env_config.copy()
     eval_env_config["random_seed"] += opts.get("random_seed_range", 10)
-    eval_env = env_creator(eval_env_config)
+    eval_env = env_creator(
+        eval_env_config,
+        risk_model=risk_model if risk_enabled else None,
+    )
 
     env.reset()
     eval_env.reset()
-    return env, eval_env, opts["random_seed"]
+    return env, eval_env, opts["random_seed"], risk_model
 
 
 def select_algorithm(algo_name: str, algo_type: str):
@@ -256,6 +285,7 @@ class ExperimentConfig:
     exploration: ExplorationConfig = field(default_factory=ExplorationConfig)
     intervention: InterventionConfig = field(default_factory=InterventionConfig)
     policy_init: PolicyInitConfig = field(default_factory=PolicyInitConfig)
+    risk_model: RiskModelConfig = field(default_factory=RiskModelConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
 
@@ -308,6 +338,12 @@ def config_to_args(cfg: DictConfig) -> Namespace:
     args.use_offline_pretrained_model = cfg.policy_init.use_offline_pretrained_model
     args.offline_pretrain_model_path = cfg.policy_init.offline_pretrain_model_path
     args.offline_dataset_path = cfg.policy_init.offline_dataset_path
+    args.use_risk_predictor = cfg.risk_model.enabled
+    args.risk_model_path = cfg.risk_model.model_path
+    args.risk_default_value = cfg.risk_model.default_risk
+    args.risk_clip_min = cfg.risk_model.clip_min
+    args.risk_clip_max = cfg.risk_model.clip_max
+    args.risk_augment_dataset = cfg.risk_model.augment_dataset
     args.offline_pretrain_steps = cfg.training.offline_pretrain_steps
     args.offline_pretrain_epoch = cfg.training.offline_pretrain_epoch
     args.online_steps = cfg.training.online_steps
@@ -318,12 +354,19 @@ def config_to_args(cfg: DictConfig) -> Namespace:
 
 
 def run_experiments(args: Namespace):
-    env, eval_env, seed = get_pensim_env(
+    env, eval_env, seed, risk_model = get_pensim_env(
         {
             "env_name": args.env_name,
             "random_seed": args.random_seed,
             "dense_reward": args.dense_reward,
             "random_seed_range": args.random_seed_range,
+            "risk": {
+                "enabled": args.use_risk_predictor,
+                "model_path": args.risk_model_path,
+                "default_risk": args.risk_default_value,
+                "clip_min": args.risk_clip_min,
+                "clip_max": args.risk_clip_max,
+            },
         }
     )
     recipe_dict = get_recipe(args.env_name)
@@ -340,7 +383,11 @@ def run_experiments(args: Namespace):
         if args.use_offline_pretrained_model:
             offline_algo = d3rlpy.load_learnable(args.offline_pretrain_model_path)
         else:
-            dataset = get_datasets(args.env_name, args.offline_dataset_path)
+            dataset = get_datasets(
+                args.env_name,
+                args.offline_dataset_path,
+                risk_model=risk_model if args.risk_augment_dataset else None,
+            )
             assert dataset is not None
             offline_algo = initialize_algo(offline_config, args, env)
             offline_algo.fit(
@@ -401,7 +448,11 @@ def run_experiments(args: Namespace):
         online_algo.build_with_env(env)
 
     # Online Training
-    dataset = get_datasets(args.env_name, args.offline_dataset_path)
+    dataset = get_datasets(
+        args.env_name,
+        args.offline_dataset_path,
+        risk_model=risk_model if args.risk_augment_dataset else None,
+    )
     assert dataset is not None
     buffer = d3rlpy.dataset.create_fifo_replay_buffer(limit=1000000, env=env)
 
@@ -445,6 +496,7 @@ cs.store(name="intervention_config", node=InterventionConfig)
 cs.store(name="policy_init_config", node=PolicyInitConfig)
 cs.store(name="training_config", node=TrainingConfig)
 cs.store(name="output_config", node=OutputConfig)
+cs.store(name="risk_model_config", node=RiskModelConfig)
 
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)

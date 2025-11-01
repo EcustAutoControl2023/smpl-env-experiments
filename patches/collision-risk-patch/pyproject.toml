@@ -1,0 +1,15 @@
+[project]
+name = "collision-risk-patch"
+version = "0.1.0"
+description = "Gaussian-process based collision risk estimation utilities"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "scikit-learn",
+    "joblib",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
