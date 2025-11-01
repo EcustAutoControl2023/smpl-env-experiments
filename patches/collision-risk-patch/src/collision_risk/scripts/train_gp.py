@@ -26,6 +26,11 @@ except Exception:  # pragma: no cover
     StandardScaler = None  # type: ignore[misc]
 
 from ..trajectory import TrajectoryWindow
+from ..gpytorch_backend import (
+    GPyTorchModelBundle,
+    ensure_gpytorch_available,
+    train_exact_gp,
+)
 
 
 def _load_dataset(path: Path) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -149,6 +154,7 @@ def fit_gaussian_process(
     *,
     length_scale: float,
     noise_level: float,
+
 ) -> GaussianProcessRegressor:
     """Train a Gaussian-process regressor on the prepared dataset."""
 
@@ -164,6 +170,20 @@ def fit_gaussian_process(
     gp.fit(X_scaled, y)
     gp.feature_scaler_ = scaler  # type: ignore[attr-defined]
     return gp
+
+
+def fit_gpytorch_model(
+    X: np.ndarray,
+    y: np.ndarray,
+    *,
+    device: str,
+    epochs: int,
+    learning_rate: float,
+) -> GPyTorchModelBundle:
+    """Train an exact GP using GPyTorch with optional GPU acceleration."""
+
+    ensure_gpytorch_available()
+    return train_exact_gp(X, y, device=device, epochs=epochs, learning_rate=learning_rate)
 
 
 def main() -> None:
@@ -209,6 +229,36 @@ def main() -> None:
         help="Noise level for the WhiteKernel component.",
     )
     parser.add_argument(
+        "--backend",
+        choices=("sklearn", "gpytorch"),
+        default="sklearn",
+        help=(
+            "Select the GP backend. Use 'gpytorch' to enable GPU-accelerated training "
+            "(requires torch+gpytorch)."
+        ),
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda",
+        help=(
+            "Torch device to use when --backend=gpytorch. Defaults to 'cuda' so GPUs are "
+            "used when available."
+        ),
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=50,
+        help="Number of optimisation epochs when training with the gpytorch backend.",
+    )
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=0.1,
+        help="Learning rate for the Adam optimiser when using gpytorch.",
+    )
+    parser.add_argument(
         "--max-samples",
         type=int,
         default=20000,
@@ -241,15 +291,41 @@ def main() -> None:
     # Ensure metadata records the effective sampling cap used during training.
     args.max_samples = int(max_cap)
 
-    gp = fit_gaussian_process(
-        X,
-        y,
-        length_scale=args.length_scale,
-        noise_level=args.noise_level,
-    )
+    payload: dict
+    feature_scaler = None
+    if args.backend == "gpytorch":
+        if StandardScaler is None:  # pragma: no cover - optional dependency guard
+            raise RuntimeError("scikit-learn is required to scale features for gpytorch training.")
+        feature_scaler = StandardScaler()
+        X_scaled = feature_scaler.fit_transform(X)
+        bundle = fit_gpytorch_model(
+            X_scaled,
+            y,
+            device=args.device,
+            epochs=args.epochs,
+            learning_rate=args.learning_rate,
+        )
+        payload = {
+            "backend": "gpytorch",
+            "bundle": bundle,
+            "feature_scaler": feature_scaler,
+            "metadata": vars(args),
+        }
+    else:
+        gp = fit_gaussian_process(
+            X,
+            y,
+            length_scale=args.length_scale,
+            noise_level=args.noise_level,
+        )
+        payload = {
+            "backend": "sklearn",
+            "model": gp,
+            "metadata": vars(args),
+        }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump({"model": gp, "metadata": vars(args)}, args.output)
+    joblib.dump(payload, args.output)
 
     summary = {
         "samples_total": int(total_samples),
@@ -257,6 +333,8 @@ def main() -> None:
         "features": int(X.shape[1]),
         "positive_fraction": float(y.mean()),
         "checkpoint": str(args.output),
+        "backend": args.backend,
+        "device": args.device if args.backend == "gpytorch" else "cpu",
     }
     print(json.dumps(summary, indent=2))
 

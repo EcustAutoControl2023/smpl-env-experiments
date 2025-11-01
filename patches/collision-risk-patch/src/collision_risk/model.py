@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Optional, Sequence
+from typing import Optional, Sequence
 
 import joblib
 import numpy as np
@@ -13,6 +13,15 @@ try:  # pragma: no cover - optional dependency guard
     from sklearn.gaussian_process import GaussianProcessRegressor
 except Exception:  # pragma: no cover
     GaussianProcessRegressor = None  # type: ignore[misc]
+
+try:  # pragma: no cover - optional dependency guard
+    import torch
+    import gpytorch
+except Exception:  # pragma: no cover
+    torch = None  # type: ignore[assignment]
+    gpytorch = None  # type: ignore[assignment]
+
+from .gpytorch_backend import GPyTorchModelBundle, ensure_gpytorch_available, load_model_bundle
 
 
 @dataclass
@@ -56,15 +65,49 @@ class GaussianProcessCollisionModel(CollisionRiskModel):
     """
 
     gp: Optional[GaussianProcessRegressor] = None
+    backend: str = "sklearn"
+    gpytorch_bundle: Optional[GPyTorchModelBundle] = None
+    gpytorch_model: Optional["gpytorch.models.ExactGP"] = None
+    gpytorch_likelihood: Optional["gpytorch.likelihoods.GaussianLikelihood"] = None
+    feature_scaler: Optional[object] = None
+    device: str = "cpu"
 
     def predict_risk(self, features: ArrayLike) -> float:
         feature_vector = np.asarray(features, dtype=float).reshape(1, -1)
+        scaler = self.feature_scaler
+        if scaler is None and self.backend == "sklearn" and self.gp is not None:
+            scaler = getattr(self.gp, "feature_scaler_", None)
+        if scaler is not None:
+            try:
+                feature_vector = scaler.transform(feature_vector)
+            except Exception:
+                return self._clip(self.default_risk)
+
+        if self.backend == "gpytorch":
+            if self.gpytorch_model is None or self.gpytorch_likelihood is None:
+                return self._clip(self.default_risk)
+            try:
+                ensure_gpytorch_available()
+                target_device = self.device
+                if target_device != "cpu" and not torch.cuda.is_available():
+                    target_device = "cpu"
+                device = torch.device(target_device)
+                model = self.gpytorch_model.to(device)
+                likelihood = self.gpytorch_likelihood.to(device)
+                self.gpytorch_model = model
+                self.gpytorch_likelihood = likelihood
+                self.device = target_device
+                x_tensor = torch.as_tensor(feature_vector, dtype=torch.float32, device=device)
+                with torch.no_grad(), gpytorch.settings.fast_pred_var():
+                    posterior = likelihood(model(x_tensor))
+                prediction = float(posterior.mean.squeeze().cpu().numpy())
+            except Exception:
+                return self._clip(self.default_risk)
+            return self._clip(prediction)
+
         if self.gp is None:
             return self._clip(self.default_risk)
         try:
-            scaler = getattr(self.gp, "feature_scaler_", None)
-            if scaler is not None:
-                feature_vector = scaler.transform(feature_vector)
             prediction = float(self.gp.predict(feature_vector, return_std=False)[0])
         except Exception:
             return self._clip(self.default_risk)
@@ -80,10 +123,47 @@ class GaussianProcessCollisionModel(CollisionRiskModel):
         """Load a GP model from a joblib checkpoint."""
 
         state = joblib.load(checkpoint)
-        gp = state.get("model") if isinstance(state, dict) else state
         clip_min, clip_max = clip
+
+        if isinstance(state, dict) and state.get("backend") == "gpytorch":
+            bundle_obj = state.get("bundle")
+            bundle = bundle_obj if isinstance(bundle_obj, GPyTorchModelBundle) else None
+            scaler = state.get("feature_scaler")
+            metadata = state.get("metadata", {})
+            device = metadata.get("device", "cpu") if isinstance(metadata, dict) else "cpu"
+            try:
+                ensure_gpytorch_available()
+                model, likelihood = load_model_bundle(bundle) if bundle is not None else (None, None)
+            except Exception:
+                model = None
+                likelihood = None
+            return cls(
+                gp=None,
+                backend="gpytorch",
+                gpytorch_bundle=bundle,
+                gpytorch_model=model,
+                gpytorch_likelihood=likelihood,
+                feature_scaler=scaler,
+                device=device,
+                default_risk=default_risk,
+                clip_min=clip_min,
+                clip_max=clip_max,
+            )
+
+        gp = state.get("model") if isinstance(state, dict) else state
+        scaler = None
+        if isinstance(state, dict):
+            scaler = getattr(gp, "feature_scaler_", None)
+            if scaler is None:
+                scaler = state.get("feature_scaler")
         return cls(
             gp=gp if GaussianProcessRegressor is not None else None,
+            backend="sklearn",
+            gpytorch_bundle=None,
+            gpytorch_model=None,
+            gpytorch_likelihood=None,
+            feature_scaler=scaler,
+            device="cpu",
             default_risk=default_risk,
             clip_min=clip_min,
             clip_max=clip_max,

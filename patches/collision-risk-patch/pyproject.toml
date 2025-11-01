@@ -10,6 +10,12 @@ dependencies = [
     "joblib",
 ]
 
+[project.optional-dependencies]
+gpytorch = [
+    "torch",
+    "gpytorch",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

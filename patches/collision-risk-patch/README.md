@@ -4,6 +4,11 @@ Utility package providing reusable collision risk estimation tooling used by the
 
 ## Training a Gaussian-process Checkpoint
 
+> **GPU backend dependencies** – Install the optional ``gpytorch`` extra defined in
+> ``pyproject.toml`` (``uv add 'collision-risk-patch[gpytorch]'``) or manually add
+> ``torch`` and ``gpytorch`` to your environment before selecting the ``gpytorch``
+> backend described below.
+
 1. **Prepare an offline dataset.** Export rollouts that contain the raw
    observation and action streams alongside a terminal flag indicating when an
    episode ends due to a collision. Supported formats are:
@@ -40,6 +45,29 @@ Utility package providing reusable collision risk estimation tooling used by the
    tune ``--max-samples`` (or set it to ``0`` to keep every timestep) and
    ``--seed`` to control that subsampling. Adjust the kernel hyperparameters via
    ``--length-scale`` and ``--noise-level`` to tune the Gaussian process.
+
+   To accelerate training with a CUDA-capable GPU install ``torch`` and
+   ``gpytorch`` (for example via ``uv add torch gpytorch`` or your preferred
+   package manager) and select the GPyTorch backend:
+
+   ```bash
+   uv run python -m collision_risk.scripts.train_gp \
+     experiments/JPC/offline_datasets/pensimenv/900_normalize=False.pkl \
+     --history 8 \
+     --include-actions \
+     --horizon 25 \
+     --max-samples 15000 \
+     --backend gpytorch \
+     --device cuda \
+     --epochs 100 \
+     --learning-rate 0.05 \
+     --output artifacts/collision_gp_gpu.joblib
+   ```
+
+   The gpytorch backend fits an exact GP using PyTorch, honouring the same
+   feature scaling used by the scikit-learn implementation while offloading the
+   linear algebra to the requested ``--device``. Set ``--device`` to ``cpu`` to
+   force host-side training when a GPU is unavailable.
 
 The resulting ``collision_gp.joblib`` file can then be referenced from the
 experiment configuration as described below.
