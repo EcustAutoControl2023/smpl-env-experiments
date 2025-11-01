@@ -9,9 +9,11 @@ import numpy as np
 try:  # pragma: no cover - optional dependency guard
     import torch
     import gpytorch
+    from tqdm.auto import tqdm
 except Exception:  # pragma: no cover
     torch = None  # type: ignore[assignment]
     gpytorch = None  # type: ignore[assignment]
+    tqdm = None  # type: ignore[assignment]
 
 
 @dataclass
@@ -90,12 +92,23 @@ def train_exact_gp(
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
 
-    for _ in range(max(epochs, 1)):
+    progress = None
+    if tqdm is not None:
+        progress = tqdm(range(max(epochs, 1)), desc="Optimising GP", leave=False)
+    else:
+        progress = range(max(epochs, 1))
+
+    for _ in progress:
         optimizer.zero_grad()
         output = model(train_x)
         loss = -mll(output, train_y)
         loss.backward()
         optimizer.step()
+        if tqdm is not None:
+            progress.set_postfix(loss=float(loss.detach()))  # type: ignore[attr-defined]
+
+    if tqdm is not None:
+        progress.close()  # type: ignore[attr-defined]
 
     model.eval()
     likelihood.eval()

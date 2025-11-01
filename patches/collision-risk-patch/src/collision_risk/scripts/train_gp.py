@@ -12,6 +12,11 @@ import joblib
 import numpy as np
 
 try:  # pragma: no cover - optional dependency guard
+    from tqdm.auto import tqdm
+except Exception:  # pragma: no cover
+    tqdm = None  # type: ignore[assignment]
+
+try:  # pragma: no cover - optional dependency guard
     from d3rlpy.dataset import MDPDataset
 except Exception:  # pragma: no cover
     MDPDataset = None  # type: ignore[misc]
@@ -122,23 +127,33 @@ def build_training_matrix(
     total_samples = 0
     collision_targets = _future_collision_targets(terminals.astype(bool), horizon)
 
-    for start, end in _iter_episode_indices(terminals.astype(bool)):
-        window.reset()
-        for idx in range(start, end):
-            window.append(observations[idx], actions[idx] if include_actions else None)
-            feature = window.as_feature_vector()
-            if feature.size == 0:
-                continue
-            total_samples += 1
-            if max_samples is None or len(features) < max_samples:
-                features.append(feature)
-                targets.append(collision_targets[idx])
-            else:
-                assert rng is not None
-                replacement_index = int(rng.integers(0, total_samples))
-                if replacement_index < max_samples:
-                    features[replacement_index] = feature
-                    targets[replacement_index] = collision_targets[idx]
+    progress = None
+    if tqdm is not None:
+        progress = tqdm(total=int(len(terminals)), desc="Preparing GP dataset", leave=False)
+
+    try:
+        for start, end in _iter_episode_indices(terminals.astype(bool)):
+            window.reset()
+            for idx in range(start, end):
+                if progress is not None:
+                    progress.update(1)
+                window.append(observations[idx], actions[idx] if include_actions else None)
+                feature = window.as_feature_vector()
+                if feature.size == 0:
+                    continue
+                total_samples += 1
+                if max_samples is None or len(features) < max_samples:
+                    features.append(feature)
+                    targets.append(collision_targets[idx])
+                else:
+                    assert rng is not None
+                    replacement_index = int(rng.integers(0, total_samples))
+                    if replacement_index < max_samples:
+                        features[replacement_index] = feature
+                        targets[replacement_index] = collision_targets[idx]
+    finally:
+        if progress is not None:
+            progress.close()
 
     if not features:
         raise RuntimeError("No training samples were generated from the dataset.")
@@ -312,12 +327,21 @@ def main() -> None:
             "metadata": vars(args),
         }
     else:
-        gp = fit_gaussian_process(
-            X,
-            y,
-            length_scale=args.length_scale,
-            noise_level=args.noise_level,
-        )
+        if tqdm is not None:
+            progress = tqdm(total=1, desc="Fitting GP (sklearn)", leave=False)
+        else:
+            progress = None
+        try:
+            gp = fit_gaussian_process(
+                X,
+                y,
+                length_scale=args.length_scale,
+                noise_level=args.noise_level,
+            )
+        finally:
+            if progress is not None:
+                progress.update(1)
+                progress.close()
         payload = {
             "backend": "sklearn",
             "model": gp,
