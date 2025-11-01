@@ -53,7 +53,11 @@ from d3rlpy_patch.algos.experts import StaticRecipeExpert
 import numpy
 from smpl.envs.pensimenv import NUM_STEPS
 from utils import env_creator, get_datasets, get_recipe
-from collision_risk import load_collision_model
+from collision_risk import (
+    expand_observation_scaler,
+    load_collision_model,
+    safe_initialize_from_offline,
+)
 
 
 @dataclass
@@ -378,6 +382,9 @@ def run_experiments(args: Namespace):
 
     # Offline Algorithm Initialization
     offline_algo = None
+    offline_observation_dim = None
+    target_observation_dim = int(numpy.prod(env.observation_space.shape))
+
     if args.offline_init_policy:
         offline_config = select_algorithm(args.offline_algo, "offline")
         if args.use_offline_pretrained_model:
@@ -401,16 +408,39 @@ def run_experiments(args: Namespace):
                 experiment_name=f"{args.offline_algo}_{args.env_name}_{args.offline_exp_suffix}_{seed}",
             )
 
+        offline_impl = getattr(offline_algo, "impl", None)
+        if offline_impl is not None and hasattr(offline_impl, "observation_shape"):
+            try:
+                offline_shape = getattr(offline_impl, "observation_shape")
+                if isinstance(offline_shape, tuple):
+                    offline_observation_dim = int(numpy.prod(offline_shape))
+                elif isinstance(offline_shape, int):
+                    offline_observation_dim = int(offline_shape)
+            except Exception:
+                offline_observation_dim = None
+
     # Online Algorithm Initialization
     online_config = select_algorithm(args.online_algo, "online")
     if args.offline_init_policy:
         assert offline_algo is not None
         online_params = {}
+        observation_scaler = getattr(offline_algo, "observation_scaler", None)
+        if (
+            observation_scaler is not None
+            and offline_observation_dim is not None
+            and offline_observation_dim != target_observation_dim
+        ):
+            observation_scaler = expand_observation_scaler(
+                observation_scaler,
+                target_dim=target_observation_dim,
+                risk_default=args.risk_default_value,
+                clip=(args.risk_clip_min, args.risk_clip_max),
+            )
 
         # Prepare parameters for online algorithm
         if args.online_algo == "cql":
             online_params = {
-                "observation_scaler": offline_algo.observation_scaler,
+                "observation_scaler": observation_scaler,
                 "action_scaler": offline_algo.action_scaler,
                 "reward_scaler": offline_algo.reward_scaler,
                 "critic_encoder_factory": VectorEncoderFactory(
@@ -419,7 +449,7 @@ def run_experiments(args: Namespace):
             }
         elif args.online_algo == "sacif":
             online_params = {
-                "observation_scaler": offline_algo.observation_scaler,
+                "observation_scaler": observation_scaler,
                 "action_scaler": offline_algo.action_scaler,
                 "reward_scaler": offline_algo.reward_scaler,
                 "intervention_method": args.intervention_method,
@@ -441,8 +471,7 @@ def run_experiments(args: Namespace):
 
         online_algo = online_config(**online_params).create(device="cuda:0")
         online_algo.build_with_env(env)
-        online_algo.copy_policy_from(offline_algo)
-        online_algo.copy_q_function_from(offline_algo)
+        safe_initialize_from_offline(online_algo, offline_algo)
     else:
         online_algo = initialize_algo(online_config, args, env)
         online_algo.build_with_env(env)
