@@ -1,8 +1,8 @@
-from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 import d3rlpy
 import pickle
+from typing import Optional
 from smpl.envs.pensimenv import PeniControlData
 from pensimpy.examples.recipe import Recipe
 from pensimpy.data.constants import FS, FOIL, FG, PRES, DISCHARGE, WATER, PAA
@@ -100,7 +100,7 @@ def set_env_config(
     return env_config
 
 
-def env_creator(env_config):
+def env_creator(env_config, risk_model: Optional[object] = None):
     """
     so that all environments are created in the same way, in training and inference.
     has to be in online_experiments, otherwise will trigger ModuleNotFoundError: No module named 'models'
@@ -195,7 +195,12 @@ def plot_dataset(dataset, plot: bool = False):
         plt.show()
 
 
-def get_datasets(env_name: str, dataset_path: Optional[str] = None, plot: bool = False):
+def get_datasets(
+    env_name: str,
+    dataset_path: Optional[str] = None,
+    plot: bool = False,
+    risk_model: Optional[object] = None,
+):
     training_dataset_loc = None
     if env_name == "mabenv":
         if dataset_path is None:

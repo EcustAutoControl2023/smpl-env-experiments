@@ -58,6 +58,15 @@ experiment:
     # yaml none value indicates no offline pretraining
     offline_dataset_path: null
 
+  # Collision risk model integration
+  risk_model:
+    enabled: false
+    model_path: null
+    default_risk: 0.0
+    clip_min: 0.0
+    clip_max: 1.0
+    augment_dataset: true
+
   # Training parameters
   training:
     offline_pretrain_steps: 1150

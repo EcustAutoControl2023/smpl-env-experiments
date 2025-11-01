@@ -16,6 +16,13 @@ from pensimpy.data.constants import (
     PAA_DEFAULT_PROFILE,
 )
 
+from collision_risk import (
+    CollisionRiskObservationWrapper,
+    augment_dataset_with_risk,
+    load_collision_model,
+)
+from collision_risk.model import CollisionRiskModel
+
 
 def set_env_config(
     env_name,
@@ -100,7 +107,9 @@ def set_env_config(
     return env_config
 
 
-def env_creator(env_config):
+def env_creator(
+    env_config, risk_model: Optional[CollisionRiskModel] = None
+):
     """
     so that all environments are created in the same way, in training and inference.
     has to be in online_experiments, otherwise will trigger ModuleNotFoundError: No module named 'models'
@@ -173,6 +182,9 @@ def env_creator(env_config):
         )
     else:
         raise ValueError("env_name not recognized")
+
+    if risk_model is not None:
+        env = CollisionRiskObservationWrapper(env, model=risk_model)
     return env
 
 
@@ -195,12 +207,33 @@ def plot_dataset(dataset, plot: bool = False):
         plt.show()
 
 
-def get_datasets(env_name: str, dataset_path: Optional[str] = None, plot: bool = False):
+def get_datasets(
+    env_name: str,
+    dataset_path: Optional[str] = None,
+    plot: bool = False,
+    risk_model: Optional[CollisionRiskModel] = None,
+):
     print(f"dataset_path: {dataset_path}")
     training_dataset_loc = None
     # get file real path
     file_path = __file__
     file_dir = file_path.rsplit("/", 1)[0]
+
+    def _to_mdp_dataset(dataset_dict):
+        observations = dataset_dict["observations"]
+        if risk_model is not None:
+            observations = augment_dataset_with_risk(
+                observations,
+                model=risk_model,
+                actions=dataset_dict.get("actions"),
+                terminals=dataset_dict.get("terminals"),
+            )
+        return d3rlpy.dataset.MDPDataset(
+            observations,
+            dataset_dict["actions"],
+            dataset_dict["rewards"],
+            dataset_dict["terminals"],
+        )
     if env_name == "mabenv":
         if dataset_path is None:
             training_dataset_loc = (
@@ -218,12 +251,7 @@ def get_datasets(env_name: str, dataset_path: Optional[str] = None, plot: bool =
         with open(eval_dataset_loc, "rb") as handle:
             eval_dataset_pkl = pickle.load(handle)
 
-        dataset = d3rlpy.dataset.MDPDataset(
-            training_dataset_pkl["observations"],
-            training_dataset_pkl["actions"],
-            training_dataset_pkl["rewards"],
-            training_dataset_pkl["terminals"],
-        )
+        dataset = _to_mdp_dataset(training_dataset_pkl)
         eval_dataset = d3rlpy.dataset.MDPDataset(
             eval_dataset_pkl["observations"],
             eval_dataset_pkl["actions"],
@@ -243,12 +271,7 @@ def get_datasets(env_name: str, dataset_path: Optional[str] = None, plot: bool =
         with open(training_dataset_loc, "rb") as handle:
             training_dataset_pkl = pickle.load(handle)
 
-        dataset = d3rlpy.dataset.MDPDataset(
-            training_dataset_pkl["observations"],
-            training_dataset_pkl["actions"],
-            training_dataset_pkl["rewards"],
-            training_dataset_pkl["terminals"],
-        )
+        dataset = _to_mdp_dataset(training_dataset_pkl)
         plot_dataset(dataset, plot)
         return dataset
     elif env_name == "reactorenv":
@@ -263,12 +286,7 @@ def get_datasets(env_name: str, dataset_path: Optional[str] = None, plot: bool =
         with open(training_dataset_loc, "rb") as handle:
             training_dataset_pkl = pickle.load(handle)
 
-        dataset = d3rlpy.dataset.MDPDataset(
-            training_dataset_pkl["observations"],
-            training_dataset_pkl["actions"],
-            training_dataset_pkl["rewards"],
-            training_dataset_pkl["terminals"],
-        )
+        dataset = _to_mdp_dataset(training_dataset_pkl)
         plot_dataset(dataset, plot)
         return dataset
     elif env_name == "atropineenv":
@@ -285,12 +303,7 @@ def get_datasets(env_name: str, dataset_path: Optional[str] = None, plot: bool =
         with open(training_dataset_loc, "rb") as handle:
             training_dataset_pkl = pickle.load(handle)
 
-        dataset = d3rlpy.dataset.MDPDataset(
-            training_dataset_pkl["observations"],
-            training_dataset_pkl["actions"],
-            training_dataset_pkl["rewards"],
-            training_dataset_pkl["terminals"],
-        )
+        dataset = _to_mdp_dataset(training_dataset_pkl)
         plot_dataset(dataset, plot)
         return dataset
     elif env_name == "pensimenv":
@@ -309,12 +322,7 @@ def get_datasets(env_name: str, dataset_path: Optional[str] = None, plot: bool =
         # with open(eval_dataset_loc, "rb") as handle:
         #     eval_dataset_pkl = pickle.load(handle)
 
-        dataset = d3rlpy.dataset.MDPDataset(
-            training_dataset_pkl["observations"],
-            training_dataset_pkl["actions"],
-            training_dataset_pkl["rewards"],
-            training_dataset_pkl["terminals"],
-        )
+        dataset = _to_mdp_dataset(training_dataset_pkl)
         # eval_dataset = d3rlpy.dataset.MDPDataset(
         #     eval_dataset_pkl["observations"],
         #     eval_dataset_pkl["actions"],
